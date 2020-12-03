@@ -7,7 +7,7 @@ tests: $(BUILDDIR)/refcount_struct_test
 $(BUILDDIR):
 	mkdir -p $@
 
-$(BUILDDIR)/%_test: %_test.cc build
+$(BUILDDIR)/%_test: %_test.cc *.h $(BUILDDIR)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -Wno-unused-value -o $@ $<
 	./$@
 

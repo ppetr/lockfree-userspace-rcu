@@ -89,15 +89,18 @@ class Refcount {
 };
 
 // Owns a block of memory large enough to store a properly aligned instance of
-// `T` and additional `size` number of bytes.
-template <typename T>
+// `T` and additional `size` number of elements of type `A`.
+template <typename T, typename A = char>
 class Placement {
  public:
   // Allocates memory for a properly aligned instance of `T`, plus additional
-  // `size` bytes.
+  // array of `size` elements of `A`.
   explicit Placement(size_t size)
-      : size_(size + sizeof(T) + alignof(T) - 1),
-        allocation_(std::allocator<char>().allocate(size_)) {}
+      : size_(sizeof(Placeholder) + (alignof(Placeholder) - 1) +
+              (size - 1) * sizeof(A)),
+        allocation_(std::allocator<char>().allocate(size_)) {
+    static_assert(std::is_trivial<Placeholder>::value);
+  }
   Placement(Placement const&) = delete;
   Placement(Placement&& other) {
     allocation_ = other.allocation_;
@@ -114,13 +117,20 @@ class Placement {
   char* operator*() {
     char* aligned = allocation_;
     size_t space = size_;
-    void* result = std::align(alignof(T), size_ - (alignof(T) - 1),
+    void* result = std::align(alignof(Placeholder),
+                              size_ - (alignof(Placeholder) - 1),
                               reinterpret_cast<void*&>(aligned), space);
     assert(result != nullptr);
-    return aligned;
+    return aligned + offsetof(Placeholder, node);
   }
 
  private:
+  struct Placeholder {
+    typename std::aligned_storage<sizeof(T), alignof(T)>::type node;
+    // The array type must be the last one in the struct.
+    typename std::aligned_storage<sizeof(A[1]), alignof(A[1])>::type array;
+  };
+
   size_t size_;
   char* allocation_;
 };
