@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef _SHARED_BUFFER_H
-#define _SHARED_BUFFER_H
+#ifndef _REFCOUNT_STRUCT_H
+#define _REFCOUNT_STRUCT_H
 
 // Type-safe, reference-counted pointers to variable-sized classes.
 //
@@ -402,4 +402,4 @@ inline Unique<U> NewWithBlock(size_t length, Arg&&... args) {
 
 }  // namespace refptr
 
-#endif  // _SHARED_BUFFER_H
+#endif  // _REFCOUNT_STRUCT_H
