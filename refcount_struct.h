@@ -161,7 +161,10 @@ class Shared;
 // memory within a single allocation block.
 //
 // See also: https://isocpp.org/wiki/faq/dtors#memory-pools
-template <typename T>
+template <typename T, typename A = char,
+          typename std::enable_if<!std::is_destructible<A>{} ||
+                                      std::is_trivially_destructible<A>{},
+                                  bool>::type = true>
 class Refcounted {
  public:
   // Increment the internal reference counter. Must be paired with `Dec`.
@@ -185,21 +188,21 @@ class Refcounted {
   // Allocates and constructs in place an instance of `T`.
   template <typename... Arg>
   static Refcounted<T>* Allocate(Arg&&... args) {
-    Placement<Refcounted<T>> placement(0);
-    Refcounted<T>* aligned = placement.Node();
+    Placement<Refcounted<T, A>, A> placement(0);
+    Refcounted<T, A>* aligned = placement.Node();
     return new (aligned)
-        Refcounted<T>(std::move(placement), std::forward<Arg>(args)...);
+        Refcounted<T, A>(std::move(placement), std::forward<Arg>(args)...);
   }
 
   // Allocates and constructs in place an instance of `T`, with an additional
   // buffer of `length` bytes.
   template <typename... Arg>
-  static Refcounted<T>* AllocateWithBlock(size_t length, Arg&&... args) {
-    Placement<Refcounted<T>> placement(length);
+  static Refcounted<T, A>* AllocateWithBlock(size_t length, Arg&&... args) {
+    Placement<Refcounted<T, A>> placement(length);
     auto* node = placement.Node();
     auto* array = new (placement.Array()) char[length];
-    return new (node) Refcounted<T>(std::move(placement), array, length,
-                                    std::forward<Arg>(args)...);
+    return new (node) Refcounted<T, A>(std::move(placement), array, length,
+                                       std::forward<Arg>(args)...);
   }
 
   friend class Unique<T>;
@@ -207,19 +210,19 @@ class Refcounted {
 
  private:
   template <typename... Arg>
-  Refcounted(Placement<Refcounted<T>> placement, char* buffer, size_t length,
-             Arg&&... args)
+  Refcounted(Placement<Refcounted<T, A>, A> placement, char* buffer,
+             size_t length, Arg&&... args)
       : placement_(std::move(placement)),
         refcount_(),
         nested_(buffer, length, std::forward<Arg>(args)...) {}
 
   template <typename... Arg>
-  explicit Refcounted(Placement<Refcounted<T>> placement, Arg&&... args)
+  explicit Refcounted(Placement<Refcounted<T, A>, A> placement, Arg&&... args)
       : placement_(std::move(placement)),
         refcount_(),
         nested_(std::forward<Arg>(args)...) {}
 
-  mutable Placement<Refcounted<T>> placement_;
+  mutable Placement<Refcounted<T, A>, A> placement_;
   mutable Refcount refcount_;
   T nested_;
 };
