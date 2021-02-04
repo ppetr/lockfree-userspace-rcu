@@ -1,11 +1,11 @@
 // Copyright 2020 Google LLC
-// 
+//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
-// 
+//
 //     http://www.apache.org/licenses/LICENSE-2.0
-// 
+//
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -43,11 +43,13 @@ class Foo {
 }  // namespace
 
 int main() {
+  using refptr::New;
   using refptr::NewWithBlock;
   using refptr::Shared;
   using refptr::Unique;
 
   int counter = 0;
+  { Unique<char> owned_char(New<char>()); }
   {
     Unique<Foo> owned(NewWithBlock<Foo, int&, const char*>(
         16, counter, "Lorem ipsum dolor sit amet"));
@@ -61,6 +63,13 @@ int main() {
     assert(("Attempt to claim ownership failed", owned_opt));
     owned = *std::move(owned_opt);
     std::cout << owned->text() << std::endl;
+  }
+  assert(counter == 0);
+  {
+    auto self_owned =
+        refptr::SelfOwned<Foo>::Make(16, counter, "Lorem ipsum dolor sit amet");
+    std::cout << (*self_owned)->text() << std::endl;
+    assert(counter == 1);
   }
   assert(counter == 0);
   return 0;
