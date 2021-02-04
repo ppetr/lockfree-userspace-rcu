@@ -97,9 +97,9 @@ class Placement {
   // Allocates memory for a properly aligned instance of `T`, plus additional
   // array of `size` elements of `A`.
   explicit Placement(size_t size)
-      : size_(sizeof(Placeholder) + (alignof(Placeholder) - 1) +
-              (size - 1) * sizeof(A)),
-        allocation_(std::allocator<char>().allocate(size_)) {
+      : size_(size),
+        allocation_(reinterpret_cast<char*>(
+            std::allocator<Placeholder>().allocate(AllocatedBytes()))) {
     static_assert(std::is_trivial<Placeholder>::value);
   }
   Placement(Placement const&) = delete;
@@ -111,26 +111,38 @@ class Placement {
 
   ~Placement() {
     if (allocation_) {
-      std::allocator<char>().deallocate(allocation_, size_);
+      std::allocator<Placeholder>().deallocate(AsPlaceholder(),
+                                               AllocatedBytes());
     }
   }
 
-  char* operator*() {
-    char* aligned = allocation_;
-    size_t space = size_;
-    void* result = std::align(alignof(Placeholder),
-                              size_ - (alignof(Placeholder) - 1),
-                              reinterpret_cast<void*&>(aligned), space);
-    assert(result != nullptr);
-    return aligned + offsetof(Placeholder, node);
-  }
+  // Returns a pointer to an uninitialized memory area available for an
+  // instance of `T`.
+  T* Node() const { return reinterpret_cast<T*>(&AsPlaceholder()->node); }
+  // Returns a pointer to an uninitialized memory area available for
+  // holding `size` (specified in the constructor) elements of `A`.
+  A* Array() const { return reinterpret_cast<A*>(&AsPlaceholder()->array); }
+  // Returns a pointer to an uninitialized memory area available for an
+  // instance of `T`, and a pointer to an area suitable for holding `size`
+  // (specified in the constructor) elements of `A`.
+
+  size_t Size() { return size_; }
 
  private:
+  // Holds a properly aligned instance of `T` and an array of length 1 of `A`.
   struct Placeholder {
     typename std::aligned_storage<sizeof(T), alignof(T)>::type node;
     // The array type must be the last one in the struct.
     typename std::aligned_storage<sizeof(A[1]), alignof(A[1])>::type array;
   };
+
+  Placeholder* AsPlaceholder() const {
+    return reinterpret_cast<Placeholder*>(allocation_);
+  }
+
+  size_t AllocatedBytes() {
+    return sizeof(Placeholder) + (size_ - 1) * sizeof(A);
+  }
 
   size_t size_;
   char* allocation_;
@@ -174,7 +186,7 @@ class Refcounted {
   template <typename... Arg>
   static Refcounted<T>* Allocate(Arg&&... args) {
     Placement<Refcounted<T>> placement(0);
-    char* aligned = *placement;
+    Refcounted<T>* aligned = placement.Node();
     return new (aligned)
         Refcounted<T>(std::move(placement), std::forward<Arg>(args)...);
   }
@@ -184,10 +196,10 @@ class Refcounted {
   template <typename... Arg>
   static Refcounted<T>* AllocateWithBlock(size_t length, Arg&&... args) {
     Placement<Refcounted<T>> placement(length);
-    char* aligned = *placement;
-    return new (aligned)
-        Refcounted<T>(std::move(placement), aligned + sizeof(Refcounted<T>),
-                      length, std::forward<Arg>(args)...);
+    auto* node = placement.Node();
+    auto* array = new (placement.Array()) char[length];
+    return new (node) Refcounted<T>(std::move(placement), array, length,
+                                    std::forward<Arg>(args)...);
   }
 
   friend class Unique<T>;
