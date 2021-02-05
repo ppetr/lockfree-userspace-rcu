@@ -17,12 +17,11 @@
 
 // Type-safe, reference-counted pointers to variable-sized classes.
 //
-// - Unique<T> is move-only, owns a memory location with an instance of T.
+// - Ref<T> is move-only, owns a memory location with an instance of T.
 //   Always contains a value (unless moved out).
-// - Shared<T> is copy-only, allows only `const` access to an instance of T.
+// - Ref<const T> is copy-only, allows only `const` access to an instance of T.
 //   Always contains a value (unless moved out).
-// - Both Shared and Unique are extremely lightweight, contain only a single
-//   pointer.
+// - Ref is extremely lightweight, contain only a single pointer.
 // - When creating an instance of `T`, an additional block of memory can be
 //   requested that is passed to the constructor of `T`.
 // - Creating an instance of `T` does a single memory allocation (unlike
@@ -149,10 +148,7 @@ class Placement {
 };
 
 template <typename T>
-class Unique;
-
-template <typename T>
-class Shared;
+class Ref;
 
 // Holds a instance of `T` in a self-owned block of memory. The instance is
 // properly destroyed and the block of memory freed once the reference count
@@ -205,8 +201,8 @@ class Refcounted {
                                        std::forward<Arg>(args)...);
   }
 
-  friend class Unique<T>;
-  friend class Shared<T>;
+  friend class Ref<T>;
+  friend class Ref<typename std::add_const<T>::type>;
 
  private:
   template <typename... Arg>
@@ -227,40 +223,51 @@ class Refcounted {
   T nested_;
 };
 
+// References a ref-counted instance of `T`.
+//
+// Instances of `Ref<const T>` are copyable, because there is no risk of
+// concurrent modifications.
+// Instances of `Ref<T>`, where `T` is non-`const`, are move-only.
 template <typename T>
-class Shared final {
+class Ref final {
  public:
-  Shared(Shared const& other) : Shared(other.buffer_) {
+  Ref(Ref<typename std::add_const<T>::type> const& other) : Ref(other.buffer_) {
     assert(buffer_ != nullptr);
     buffer_->Inc();
   }
-  Shared(Shared&& other) : Shared(other.buffer_) { other.buffer_ = nullptr; }
+  Ref(Ref<typename std::remove_const<T>::type>&& other) : Ref(other.buffer_) {
+    other.buffer_ = nullptr;
+  }
 
-  Shared& operator=(Shared const& other) {
+  Ref& operator=(Ref<typename std::add_const<T>::type> const& other) {
     assert(other.buffer_ != nullptr);
     Reset(other.buffer_);
   }
-  Shared& operator=(Shared&& other) {
+  Ref& operator=(Ref<typename std::remove_const<T>::type>&& other) {
+    Reset();
     buffer_ = other.buffer_;
     other.buffer_ = nullptr;
     return *this;
   }
 
-  ~Shared() { Reset(); }
+  ~Ref() { Reset(); }
+
+  template <typename U, typename... Arg>
+  friend Ref<U> New(size_t length, Arg&&... args);
 
 #ifdef __cpp_lib_optional
   // If `this` is the only instance referencing the internal data-structure,
-  // converts it into a writable Unique. Otherwise it is discarded.
+  // converts it into a non-const Ref. Otherwise it is discarded.
   //
   // Example:
   //
-  //   std::optional<Unique<T>> reused = std::nullopt;
+  //   std::optional<Ref<T>> reused = std::nullopt;
   //   while (HaveDate()) {
-  //     Unique<T> buffer(reused
+  //     Ref<T> buffer(reused
   //        ? *std::move(reused)
-  //        : Unique<T>::AllocateWithBlock(...));
+  //        : Ref<T>::AllocateWithBlock(...));
   //     // Fill buffer with data.
-  //     Shared<T> shared = std::move(reused).Share();
+  //     Ref<const T> shared = std::move(reused);
   //     consumer.AppendData(shared);
   //     // If the consumer released the shared pointer, the buffer can be
   //     // reused.
@@ -271,10 +278,10 @@ class Shared final {
   // data structure), a new buffer is allocated. If it releases `shared` by the
   // time `AppendData` finishes, the buffer is reused, so no new memory
   // allocation is needed.
-  std::optional<Unique<T>> AttemptToClaim() && {
+  std::optional<Ref<typename std::remove_const<T>::type>> AttemptToClaim() && {
     if (buffer_->IsOne()) {
-      std::optional<Unique<T>> result(
-          Unique<T>(const_cast<Refcounted<T>*>(buffer_)));
+      std::optional<Ref<typename std::remove_const<T>::type>> result(
+          (Ref<typename std::remove_const<T>::type>)(buffer_));
       // Don't call Reset here, the ownership is passed to the returned value.
       buffer_ = nullptr;
       return result;
@@ -285,7 +292,7 @@ class Shared final {
   }
 #endif  // __cpp_lib_optional
 
-  const T& operator*() const { return buffer_->nested_; }
+  T& operator*() const { return buffer_->nested_; }
 
   const T* operator->() const { return &buffer_->nested_; }
 
@@ -308,96 +315,36 @@ class Shared final {
     }
   }
 
-  friend class Unique<T>;
+  friend class Ref<typename std::add_const<T>::type>;
+  friend class Ref<typename std::remove_const<T>::type>;
 
  private:
-  explicit Shared(const Refcounted<T>* buffer) : buffer_(buffer) {}
+  explicit Ref(Refcounted<typename std::remove_const<T>::type>* buffer)
+      : buffer_(buffer) {}
 
-  inline void Reset(Refcounted<T>* buffer = nullptr) {
+  inline void Reset(
+      Refcounted<typename std::remove_const<T>::type>* buffer = nullptr) {
     if (buffer_) {
-      std::move(*buffer_).Dec();
+      // Non-const values should not be shared.
+      std::move(*buffer_).Dec(/*expect_one=*/!std::is_const<T>::value);
     }
     if ((buffer_ = buffer) != nullptr) {
       buffer_->Inc();
     }
   }
 
-  const Refcounted<T>* buffer_;
+  Refcounted<typename std::remove_const<T>::type>* buffer_;
 };
-
-template <typename T>
-class Unique final {
- public:
-  Unique(Unique const& other) = delete;
-  Unique(Unique&& other) : buffer_(other.buffer_) { other.buffer_ = nullptr; }
-
-  Unique& operator=(Unique const& other) = delete;
-  Unique& operator=(Unique&& other) {
-    assert(other.buffer_ != nullptr);
-    Reset(other.buffer_);
-    other.buffer_ = nullptr;
-    return *this;
-  }
-
-  ~Unique() { Reset(); }
-
-  template <typename U, typename... Arg>
-  friend Unique<U> New(Arg&&... args);
-
-  template <typename U, typename... Arg>
-  friend Unique<U> NewWithBlock(size_t length, Arg&&... args);
-
-  T& operator*() { return buffer_->nested_; }
-
-  T* operator->() { return &buffer_->nested_; }
-
-  // Converts this to a read-only Shared reference.
-  Shared<T> Share() && {
-    Shared<T> shared(buffer_);
-    buffer_ = nullptr;
-    return shared;
-  }
-  // Creates a Shared reference while keeping `this`. The caller takes the
-  // responsibility for not modifying `this` while the Shared reference is
-  // accessed elsewhere.
-  Shared<T> ShareUnsafe() const {
-    Shared<T> shared(buffer_);
-    buffer_->Inc();
-    return shared;
-  }
-
-  friend class Shared<T>;
-
- private:
-  explicit Unique(Refcounted<T>* buffer) : buffer_(buffer) {}
-
-  inline void Reset(Refcounted<T>* buffer = nullptr) {
-    if (buffer_) {
-      // If `ShareUnsafe` has been used, there can be more than one reference
-      // to buffer_. Therefore we just decrement the counter and let buffer_
-      // handle destruction safely.
-      std::move(*buffer_).Dec(/*expect_one=*/true);
-    }
-    buffer_ = buffer;
-  }
-
-  Refcounted<T>* buffer_;
-};
-
-// Constructs a new instance of `U` in-place, with the given arguments.
-template <typename U, typename... Arg>
-inline Unique<U> New(Arg&&... args) {
-  return Unique<U>(Refcounted<U>::Allocate(std::forward<Arg>(args)...));
-}
 
 // Constructs a new instance of `U` in-place, with the given arguments with an
 // additional block of memory of size `length`. A `char*` pointer to this
 // buffer and its `size_t` length are passed as the first two arguments to a
 // constructor of `U`.
 template <typename U, typename... Arg>
-inline Unique<U> NewWithBlock(size_t length, Arg&&... args) {
-  return Unique<U>(
-      Refcounted<U>::AllocateWithBlock(length, std::forward<Arg>(args)...));
+inline Ref<U> New(size_t length, Arg&&... args) {
+  return Ref<U>(
+      Refcounted<typename std::remove_const<U>::type>::AllocateWithBlock(
+          length, std::forward<Arg>(args)...));
 }
 
 }  // namespace refptr

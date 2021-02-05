@@ -40,36 +40,32 @@ class Foo {
   const char* buf_;
 };
 
+class Bar {
+  refptr::Ref<Foo> bar1;
+  refptr::Ref<const Foo> bar2;
+};
+
 }  // namespace
 
 int main() {
   using refptr::New;
-  using refptr::NewWithBlock;
-  using refptr::Shared;
-  using refptr::Unique;
+  using refptr::Ref;
 
   int counter = 0;
-  { Unique<char> owned_char(New<char>()); }
   {
-    Unique<Foo> owned(NewWithBlock<Foo, int&, const char*>(
+    Ref<Foo> owned(New<Foo, int&, const char*>(
         16, counter, "Lorem ipsum dolor sit amet"));
     assert(counter == 1);
     std::cout << owned->text() << std::endl;
-    Shared<Foo> shared(std::move(owned).Share());
+    Ref<const Foo> shared(std::move(owned));
     assert(counter == 1);
     std::cout << shared->text() << std::endl;
     auto owned_opt = std::move(shared).AttemptToClaim();
     assert(counter == 1);
     assert(("Attempt to claim ownership failed", owned_opt));
     owned = *std::move(owned_opt);
-    std::cout << owned->text() << std::endl;
-  }
-  assert(counter == 0);
-  {
-    auto self_owned =
-        refptr::SelfOwned<Foo>::Make(16, counter, "Lorem ipsum dolor sit amet");
-    std::cout << (*self_owned)->text() << std::endl;
     assert(counter == 1);
+    std::cout << owned->text() << std::endl;
   }
   assert(counter == 0);
   return 0;
