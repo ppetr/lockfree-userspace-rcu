@@ -97,8 +97,7 @@ class Placement {
   // array of `size` elements of `A`.
   explicit Placement(size_t size)
       : size_(size),
-        allocation_(reinterpret_cast<char*>(
-            std::allocator<Placeholder>().allocate(AllocatedBytes()))) {
+        allocation_(std::allocator<char>().allocate(AllocatedBytes())) {
     static_assert(std::is_trivial<Placeholder>::value);
   }
   Placement(Placement const&) = delete;
@@ -110,8 +109,7 @@ class Placement {
 
   ~Placement() {
     if (allocation_) {
-      std::allocator<Placeholder>().deallocate(AsPlaceholder(),
-                                               AllocatedBytes());
+      std::allocator<char>().deallocate(allocation_, AllocatedBytes());
     }
   }
 
@@ -136,11 +134,16 @@ class Placement {
   };
 
   Placeholder* AsPlaceholder() const {
-    return reinterpret_cast<Placeholder*>(allocation_);
+    void* ptr = allocation_;
+    size_t space = sizeof(Placeholder) + alignof(Placeholder) - 1;
+    ptr = std::align(alignof(Placeholder), sizeof(Placeholder), ptr, space);
+    assert(ptr != nullptr);
+    return reinterpret_cast<Placeholder*>(ptr);
   }
 
   size_t AllocatedBytes() {
-    return sizeof(Placeholder) + (size_ - 1) * sizeof(A);
+    return sizeof(Placeholder) + alignof(Placeholder) - 1 +
+           (size_ - 1) * sizeof(A);
   }
 
   size_t size_;
