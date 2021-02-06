@@ -231,11 +231,11 @@ class Refcounted {
 template <typename T>
 class Ref final {
  public:
-  Ref(Ref<typename std::add_const<T>::type> const& other) : Ref(other.buffer_) {
-    assert(buffer_ != nullptr);
-    buffer_->Inc();
+  Ref(Ref<typename std::add_const<T>::type> const& other) {
+    Reset(other.buffer_);
   }
-  Ref(Ref<typename std::remove_const<T>::type>&& other) : Ref(other.buffer_) {
+  Ref(Ref<typename std::remove_const<T>::type>&& other)
+      : buffer_(other.buffer_) {
     other.buffer_ = nullptr;
   }
 
@@ -244,13 +244,13 @@ class Ref final {
     Reset(other.buffer_);
   }
   Ref& operator=(Ref<typename std::remove_const<T>::type>&& other) {
-    Reset();
+    Reset(nullptr);
     buffer_ = other.buffer_;
     other.buffer_ = nullptr;
     return *this;
   }
 
-  ~Ref() { Reset(); }
+  ~Ref() { Reset(nullptr); }
 
   template <typename U, typename... Arg>
   friend Ref<U> New(size_t length, Arg&&... args);
@@ -286,7 +286,7 @@ class Ref final {
       buffer_ = nullptr;
       return result;
     } else {
-      Reset();
+      Reset(nullptr);
       return std::nullopt;
     }
   }
@@ -319,13 +319,18 @@ class Ref final {
   friend class Ref<typename std::remove_const<T>::type>;
 
  private:
+  // Creates a reference with a reference counter of one.
   explicit Ref(Refcounted<typename std::remove_const<T>::type>* buffer)
-      : buffer_(buffer) {}
+      : buffer_(buffer) {
+    assert(buffer != nullptr && buffer_->IsOne());
+  }
 
-  inline void Reset(
-      Refcounted<typename std::remove_const<T>::type>* buffer = nullptr) {
-    if (buffer_) {
-      // Non-const values should not be shared.
+  // Replace the internal reference by another one, properly
+  // decrementing and incrementing their counters.
+  inline void Reset(Refcounted<typename std::remove_const<T>::type>* buffer) {
+    if (buffer_ != nullptr) {
+      // Non-const values should not be shared, therefore we can expect
+      // only a single owner.
       std::move(*buffer_).Dec(/*expect_one=*/!std::is_const<T>::value);
     }
     if ((buffer_ = buffer) != nullptr) {
