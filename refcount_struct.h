@@ -119,9 +119,6 @@ class Placement {
   // Returns a pointer to an uninitialized memory area available for
   // holding `size` (specified in the constructor) elements of `A`.
   A* Array() const { return reinterpret_cast<A*>(&AsPlaceholder()->array); }
-  // Returns a pointer to an uninitialized memory area available for an
-  // instance of `T`, and a pointer to an area suitable for holding `size`
-  // (specified in the constructor) elements of `A`.
 
   size_t Size() { return size_; }
 
