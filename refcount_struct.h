@@ -147,7 +147,7 @@ class Refcount {
   std::atomic<int32_t> count_;
 };
 
-template <typename T>
+template <typename T, typename A>
 class Ref;
 
 // Holds a instance of `T` in a self-owned block of memory. The instance is
@@ -201,8 +201,8 @@ class Refcounted {
                                        std::forward<Arg>(args)...);
   }
 
-  friend class Ref<T>;
-  friend class Ref<typename std::add_const<T>::type>;
+  friend class Ref<T, A>;
+  friend class Ref<typename std::add_const<T>::type, A>;
 
  private:
   template <typename... Arg>
@@ -228,22 +228,22 @@ class Refcounted {
 // Instances of `Ref<const T>` are copyable, because there is no risk of
 // concurrent modifications.
 // Instances of `Ref<T>`, where `T` is non-`const`, are move-only.
-template <typename T>
+template <typename T, typename A = char>
 class Ref final {
  public:
-  Ref(Ref<typename std::add_const<T>::type> const& other) {
+  Ref(Ref<typename std::add_const<T>::type, A> const& other) {
     Reset(other.buffer_);
   }
-  Ref(Ref<typename std::remove_const<T>::type>&& other)
+  Ref(Ref<typename std::remove_const<T>::type, A>&& other)
       : buffer_(other.buffer_) {
     other.buffer_ = nullptr;
   }
 
-  Ref& operator=(Ref<typename std::add_const<T>::type> const& other) {
+  Ref& operator=(Ref<typename std::add_const<T>::type, A> const& other) {
     assert(other.buffer_ != nullptr);
     Reset(other.buffer_);
   }
-  Ref& operator=(Ref<typename std::remove_const<T>::type>&& other) {
+  Ref& operator=(Ref<typename std::remove_const<T>::type, A>&& other) {
     Reset(nullptr);
     buffer_ = other.buffer_;
     other.buffer_ = nullptr;
@@ -278,10 +278,10 @@ class Ref final {
   // data structure), a new buffer is allocated. If it releases `shared` by the
   // time `AppendData` finishes, the buffer is reused, so no new memory
   // allocation is needed.
-  std::optional<Ref<typename std::remove_const<T>::type>> AttemptToClaim() && {
+  std::optional<Ref<typename std::remove_const<T>::type, A>> AttemptToClaim() && {
     if (buffer_->IsOne()) {
-      std::optional<Ref<typename std::remove_const<T>::type>> result(
-          (Ref<typename std::remove_const<T>::type>)(buffer_));
+      std::optional<Ref<typename std::remove_const<T>::type, A>> result(
+          (Ref<typename std::remove_const<T>::type, A>)(buffer_));
       // Don't call Reset here, the ownership is passed to the returned value.
       buffer_ = nullptr;
       return result;
@@ -315,8 +315,8 @@ class Ref final {
     }
   }
 
-  friend class Ref<typename std::add_const<T>::type>;
-  friend class Ref<typename std::remove_const<T>::type>;
+  friend class Ref<typename std::add_const<T>::type, A>;
+  friend class Ref<typename std::remove_const<T>::type, A>;
 
  private:
   // Creates a reference with a reference counter of one.
