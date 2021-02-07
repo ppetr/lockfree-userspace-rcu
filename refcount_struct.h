@@ -316,7 +316,6 @@ class Ref final {
   }
 
   friend class Ref<typename std::add_const<T>::type, A>;
-  friend class Ref<typename std::remove_const<T>::type, A>;
 
  private:
   // Creates a reference with a reference counter of one.
