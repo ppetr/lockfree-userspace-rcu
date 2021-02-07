@@ -294,7 +294,7 @@ class Ref final {
 
   T& operator*() const { return buffer_->nested_; }
 
-  const T* operator->() const { return &buffer_->nested_; }
+  T* operator->() const { return &buffer_->nested_; }
 
   // Creates a new reference to this object and returns it expressed as a raw
   // pointer. It must be passed to the Deleter function exactly once to
