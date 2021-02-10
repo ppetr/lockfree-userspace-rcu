@@ -261,16 +261,15 @@ class Ref final {
   //
   // Example:
   //
-  //   std::optional<Ref<T>> reused = std::nullopt;
-  //   while (HaveDate()) {
+  //   for (std::optional<Ref<T>> reused; HaveData(); ) {
   //     Ref<T> buffer(reused
   //        ? *std::move(reused)
   //        : Ref<T>::AllocateWithBlock(...));
   //     // Fill buffer with data.
   //     Ref<const T> shared = std::move(reused);
   //     consumer.AppendData(shared);
-  //     // If the consumer released the shared pointer, the buffer can be
-  //     // reused.
+  //     // If the consumer released the shared pointer by now, the buffer
+  //     // can be reused.
   //     reused = std::move(shared).AttemptToClaim();
   //   }
   //
