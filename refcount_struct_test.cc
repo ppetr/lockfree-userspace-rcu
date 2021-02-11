@@ -53,8 +53,8 @@ int main() {
 
   int counter = 0;
   {
-    Ref<Foo> owned(New<Foo, int&, const char*>(
-        16, counter, "Lorem ipsum dolor sit amet"));
+    Ref<Foo> owned(
+        New<Foo, int&, const char*>(16, counter, "Lorem ipsum dolor sit amet"));
     assert(counter == 1);
     std::cout << owned->text() << std::endl;
     Ref<const Foo> shared(std::move(owned));
