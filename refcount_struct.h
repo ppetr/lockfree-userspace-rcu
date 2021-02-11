@@ -277,13 +277,14 @@ class Ref final {
   // data structure), a new buffer is allocated. If it releases `shared` by the
   // time `AppendData` finishes, the buffer is reused, so no new memory
   // allocation is needed.
-  std::optional<Ref<typename std::remove_const<T>::type, A>> AttemptToClaim() && {
+  std::optional<Ref<typename std::remove_const<T>::type, A>>
+  AttemptToClaim() && {
     if (buffer_->IsOne()) {
-      std::optional<Ref<typename std::remove_const<T>::type, A>> result(
-          (Ref<typename std::remove_const<T>::type, A>)(buffer_));
+      Ref<typename std::remove_const<T>::type, A> result(buffer_);
       // Don't call Reset here, the ownership is passed to the returned value.
       buffer_ = nullptr;
-      return result;
+      return std::make_optional<Ref<typename std::remove_const<T>::type, A>>(
+          std::move(result));
     } else {
       Reset(nullptr);
       return std::nullopt;
