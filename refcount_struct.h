@@ -158,8 +158,9 @@ class Ref;
 //
 // See also: https://isocpp.org/wiki/faq/dtors#memory-pools
 template <typename T, typename A = char,
-          typename std::enable_if<!std::is_destructible<A>{} ||
-                                      std::is_trivially_destructible<A>{},
+          typename std::enable_if<!std::is_rvalue_reference<T>{} &&
+                                      (!std::is_destructible<A>{} ||
+                                       std::is_trivially_destructible<A>{}),
                                   bool>::type = true>
 class Refcounted {
  public:
