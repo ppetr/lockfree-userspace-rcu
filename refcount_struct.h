@@ -53,7 +53,7 @@ class Placement {
   // array of `size` elements of `A`.
   explicit Placement(size_t size)
       : size_(size),
-        allocation_(std::allocator<char>().allocate(AllocatedBytes())) {
+        allocation_(std::allocator<Unit>().allocate(AllocatedUnits())) {
     static_assert(std::is_trivial<Placeholder>::value);
   }
   Placement(Placement const&) = delete;
@@ -65,7 +65,8 @@ class Placement {
 
   ~Placement() {
     if (allocation_) {
-      std::allocator<char>().deallocate(allocation_, AllocatedBytes());
+      std::allocator<Unit>().deallocate(static_cast<Unit*>(allocation_),
+                                        AllocatedUnits());
     }
   }
 
@@ -85,22 +86,24 @@ class Placement {
     // The array type must be the last one in the struct.
     typename std::aligned_storage<sizeof(A[1]), alignof(A[1])>::type array;
   };
+  // Properly aligned unit used for the actual allocation.
+  // It can occupy more than 1 byte, therefore we need to properly compute
+  // their required number below.
+  struct Unit {
+    typename std::aligned_storage<1, alignof(Placeholder)>::type _;
+  };
 
-  Placeholder* AsPlaceholder() const {
-    void* ptr = allocation_;
-    size_t space = sizeof(Placeholder) + alignof(Placeholder) - 1;
-    ptr = std::align(alignof(Placeholder), sizeof(Placeholder), ptr, space);
-    assert(ptr != nullptr);
-    return reinterpret_cast<Placeholder*>(ptr);
+  constexpr size_t AllocatedUnits() {
+    return (sizeof(Placeholder) + (size_ - 1) * sizeof(A) + sizeof(A) - 1) /
+           sizeof(A);
   }
 
-  size_t AllocatedBytes() {
-    return sizeof(Placeholder) + alignof(Placeholder) - 1 +
-           (size_ - 1) * sizeof(A);
+  Placeholder* AsPlaceholder() const {
+    return static_cast<Placeholder*>(allocation_);
   }
 
   size_t size_;
-  char* allocation_;
+  void* allocation_;
 };
 
 class Refcount {
