@@ -207,13 +207,6 @@ class Refcounted {
 
  private:
   template <typename... Arg>
-  Refcounted(Placement<Refcounted<T, A>, A> placement, char* buffer,
-             size_t length, Arg&&... args)
-      : placement_(std::move(placement)),
-        refcount_(),
-        nested_(buffer, length, std::forward<Arg>(args)...) {}
-
-  template <typename... Arg>
   explicit Refcounted(Placement<Refcounted<T, A>, A> placement, Arg&&... args)
       : placement_(std::move(placement)),
         refcount_(),
