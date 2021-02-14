@@ -57,7 +57,7 @@ int main() {
         New<Foo, int&, const char*>(16, counter, "Lorem ipsum dolor sit amet"));
     assert(counter == 1);
     std::cout << owned->text() << std::endl;
-    Ref<const Foo> shared(std::move(owned));
+    Ref<const Foo> shared(std::move(owned).Share());
     assert(counter == 1);
     std::cout << shared->text() << std::endl;
     auto owned_opt = std::move(shared).AttemptToClaim();
