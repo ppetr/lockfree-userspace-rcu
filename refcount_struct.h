@@ -77,7 +77,7 @@ class Placement {
   // holding `size` (specified in the constructor) elements of `A`.
   A* Array() const { return reinterpret_cast<A*>(&AsPlaceholder()->array); }
 
-  size_t Size() { return size_; }
+  size_t Size() const { return size_; }
 
  private:
   // Holds a properly aligned instance of `T` and an array of length 1 of `A`.
@@ -118,7 +118,7 @@ class Refcount {
   }
 
   // Returns whether the atomic integer is 1.
-  inline bool IsOne() {
+  inline bool IsOne() const {
     // This thread must observe the correct value, including any prior
     // modifications by other threads.
     return count_.load(std::memory_order_acquire) == 1;
