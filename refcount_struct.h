@@ -191,6 +191,10 @@ class Refcounted {
         Refcounted<T, A>(std::move(placement), std::forward<Arg>(args)...);
   }
 
+  T& operator*() { return nested_; }
+  T const& operator*() const { return nested_; }
+  T* operator->() const { return &nested_; }
+
   // Allocates and constructs in place an instance of `T`, with an additional
   // buffer of `length` bytes.
   template <typename... Arg>
@@ -201,9 +205,6 @@ class Refcounted {
     return new (node) Refcounted<T, A>(std::move(placement), array, length,
                                        std::forward<Arg>(args)...);
   }
-
-  friend class Ref<T, A>;
-  friend class Ref<typename std::add_const<T>::type, A>;
 
  private:
   template <typename... Arg>
@@ -372,9 +373,8 @@ class Ref final
   }
 #endif  // __cpp_lib_optional
 
-  T& operator*() const { return get_buffer()->nested_; }
-
-  T* operator->() const { return &get_buffer()->nested_; }
+  T& operator*() const { return **get_buffer(); }
+  T* operator->() const { return &**get_buffer(); }
 
   // Creates a new reference to this object and returns it expressed as a raw
   // pointer. It must be passed to the Deleter function exactly once to
