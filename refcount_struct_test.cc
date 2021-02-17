@@ -70,5 +70,17 @@ int main() {
 #endif
   }
   assert(counter == 0);
+  {
+    void* deleter_arg;
+    {
+      Ref<Foo> owned(New<Foo, int&, const char*>(16, counter,
+                                                 "Lorem ipsum dolor sit amet"));
+      assert(counter == 1);
+      deleter_arg = owned.ToDeleterArg();
+    }
+    assert(counter == 1);
+    Ref<Foo>::Deleter(deleter_arg);
+  }
+  assert(counter == 0);
   return 0;
 }
