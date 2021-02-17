@@ -1,6 +1,5 @@
 BUILDDIR=build
-CXXFLAGS=-Wall -Wextra -std=c++17
-CXX=clang++
+CXXFLAGS+=-Wall -Wextra
 
 tests: $(BUILDDIR)/refcount_struct_test
 

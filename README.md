@@ -4,6 +4,8 @@ _*Disclaimer:* This is not an officially supported Google product._
 
 ## Summary
 
+[![Build Status](https://travis-ci.com/ppetr/refcounted-var-sized-class.svg?branch=main)](https://travis-ci.com/ppetr/refcounted-var-sized-class)
+
 - `Unique<T>` is move-only, owns a memory location with an instance of `T`.
   Always contains a value (unless moved out).
 - `Shared<T>` is copy-only, allows only `const` access to an instance of `T`.
