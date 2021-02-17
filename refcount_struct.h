@@ -143,8 +143,8 @@ class Refcount {
       return true;
     }
     int32_t refcount = count_.fetch_sub(1, std::memory_order_acq_rel);
-    assert(refcount >= 0);
-    return refcount == 0;
+    assert(refcount > 0);
+    return refcount == 1;
   }
 
  private:
