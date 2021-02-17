@@ -22,10 +22,10 @@
 // - Ref<const T> is copy-only, allows only `const` access to an instance of T.
 //   Always contains a value (unless moved out).
 // - Ref is extremely lightweight, contain only a single pointer.
-// - When creating an instance of `T`, an additional block of memory can be
-//   requested that is passed to the constructor of `T`.
+// - When creating an instance of `T`, additional memory can be requested that
+//   is passed to the constructor of `T`.
 // - Creating an instance of `T` does a single memory allocation (unlike
-//   `shared_ptr`), even with an additional memory block.
+//   `shared_ptr`), even with additional memory.
 // - Shared::ToDeleterArg allows to create a `void*` reference that can be used
 //   to release memory in old-style C code using Shared::Deleter.
 
