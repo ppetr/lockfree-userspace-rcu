@@ -282,7 +282,9 @@ class RefBase {
 
   // Creates a reference with a reference counter of one.
   constexpr explicit RefBase(RefcountedType* buffer) : buffer_(buffer) {
+#if __cplusplus >= 201402L
     assert(buffer_ != nullptr && buffer_->IsOne());
+#endif
   }
 
   RefcountedType* get_buffer() const& { return buffer_; }
