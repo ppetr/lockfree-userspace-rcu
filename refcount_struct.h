@@ -54,7 +54,8 @@ class Placement {
   explicit Placement(size_t size)
       : size_(size),
         allocation_(std::allocator<Unit>().allocate(AllocatedUnits())) {
-    static_assert(std::is_trivial<Placeholder>::value);
+    static_assert(std::is_trivial<Placeholder>::value,
+                  "Internal error: Placeholder class must be trivial");
   }
   Placement(Placement const&) = delete;
   Placement(Placement&& other) {
@@ -288,7 +289,7 @@ class RefBase {
   // Returns the internal buffer_ and clears the field.
 #ifdef __has_attribute
 #if __has_attribute(nodiscard)
-  nodiscard
+  [[nodiscard]]
 #endif
 #endif
       RefcountedType*
