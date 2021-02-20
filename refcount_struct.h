@@ -294,8 +294,8 @@ class RefBase {
   [[nodiscard]]
 #endif
 #endif
-      RefcountedType*
-      move_buffer() && {
+  RefcountedType*
+  move_buffer() && {
     assert(buffer_ != nullptr && buffer_->IsOne());
     auto result = buffer_;
     buffer_ = nullptr;
