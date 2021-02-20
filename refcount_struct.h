@@ -57,6 +57,14 @@ class Placement {
     static_assert(std::is_trivial<Placeholder>::value,
                   "Internal error: Placeholder class must be trivial");
   }
+  // Creates a placement from its building blocks.
+  //
+  // - `ptr` must be a pointer previously obtained from `Placement::Node`.
+  // - `size` must be a value previously obtained from `Placement::Release`.
+  Placement(T* ptr, size_t size)
+      : size_(size),
+        allocation_(reinterpret_cast<char*>(ptr) -
+                    offsetof(Placeholder, node)) {}
   Placement(Placement const&) = delete;
   Placement(Placement&& other) {
     allocation_ = other.allocation_;
@@ -79,6 +87,12 @@ class Placement {
   A* Array() const { return reinterpret_cast<A*>(&AsPlaceholder()->array); }
 
   size_t Size() const { return size_; }
+  // Returns the `Size()` and releases ownership of `Node()`.
+  // This is used by self-owned classes for which `placement.Node() == this`.
+  size_t Release() && {
+    allocation_ = nullptr;
+    return size_;
+  }
 
  private:
   // Holds a properly aligned instance of `T` and an array of length 1 of `A`.
@@ -177,7 +191,8 @@ class Refcounted {
   void Dec(bool expect_one = false) const&& {
     if (refcount_.Dec(expect_one)) {
       // Ensure deallocation even in the (rare) case of an exception.
-      Placement<Refcounted<T>> deallocator(std::move(placement_));
+      Placement<Refcounted<T>> deallocator(const_cast<Refcounted<T, A>*>(this),
+                                           size_);
       this->~Refcounted<T>();
     }
   }
@@ -213,11 +228,11 @@ class Refcounted {
  private:
   template <typename... Arg>
   explicit Refcounted(Placement<Refcounted<T, A>, A> placement, Arg&&... args)
-      : placement_(std::move(placement)),
+      : size_(std::move(placement).Release()),
         refcount_(),
         nested_(std::forward<Arg>(args)...) {}
 
-  mutable Placement<Refcounted<T, A>, A> placement_;
+  const size_t size_;
   mutable Refcount refcount_;
   T nested_;
 };
