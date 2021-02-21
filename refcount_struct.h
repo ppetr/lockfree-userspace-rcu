@@ -46,7 +46,7 @@ namespace refptr {
 
 // Owns a block of memory large enough to store a properly aligned instance of
 // `T` and additional `size` number of elements of type `A`.
-template <typename T, typename A = char>
+template <typename T, typename A>
 class Placement {
  public:
   // Allocates memory for a properly aligned instance of `T`, plus additional
@@ -175,7 +175,7 @@ class Ref;
 // memory within a single allocation block.
 //
 // See also: https://isocpp.org/wiki/faq/dtors#memory-pools
-template <typename T, typename A = char,
+template <typename T, typename A,
           typename std::enable_if<!std::is_rvalue_reference<T>{} &&
                                       (!std::is_destructible<A>{} ||
                                        std::is_trivially_destructible<A>{}),
@@ -191,9 +191,9 @@ class Refcounted {
   void Dec(bool expect_one = false) const&& {
     if (refcount_.Dec(expect_one)) {
       // Ensure deallocation even in the (rare) case of an exception.
-      Placement<Refcounted<T>> deallocator(const_cast<Refcounted<T, A>*>(this),
-                                           size_);
-      this->~Refcounted<T>();
+      Placement<Refcounted<T, A>, A> deallocator(
+          const_cast<Refcounted<T, A>*>(this), size_);
+      this->~Refcounted<T, A>();
     }
   }
 
@@ -203,7 +203,7 @@ class Refcounted {
 
   // Allocates and constructs in place an instance of `T`.
   template <typename... Arg>
-  static Refcounted<T>* Allocate(Arg&&... args) {
+  static Refcounted<T, A>* Allocate(Arg&&... args) {
     Placement<Refcounted<T, A>, A> placement(0);
     Refcounted<T, A>* aligned = placement.Node();
     return new (aligned)
@@ -218,7 +218,7 @@ class Refcounted {
   // buffer of `length` bytes.
   template <typename... Arg>
   static Refcounted<T, A>* AllocateWithBlock(size_t length, Arg&&... args) {
-    Placement<Refcounted<T, A>> placement(length);
+    Placement<Refcounted<T, A>, A> placement(length);
     auto* node = placement.Node();
     auto* array = new (placement.Array()) char[length];
     return new (node) Refcounted<T, A>(std::move(placement), array, length,
@@ -293,7 +293,7 @@ class RefBase {
   ~RefBase() { Reset(nullptr); }
 
  protected:
-  using RefcountedType = Refcounted<typename std::remove_const<T>::type>;
+  using RefcountedType = Refcounted<typename std::remove_const<T>::type, A>;
 
   // Creates a reference with a reference counter of one.
   constexpr explicit RefBase(RefcountedType* buffer) : buffer_(buffer) {
@@ -421,7 +421,7 @@ class Ref final
 
  private:
   constexpr explicit Ref(
-      Refcounted<typename std::remove_const<T>::type>* buffer)
+      Refcounted<typename std::remove_const<T>::type, A>* buffer)
       : internal::RefBase<T, A>(buffer) {}
 
   using typename internal::RefBase<T, A>::RefcountedType;
@@ -434,9 +434,9 @@ class Ref final
 // buffer and its `size_t` length are passed as the first two arguments to a
 // constructor of `U`.
 template <typename U, typename... Arg>
-inline Ref<U> New(size_t length, Arg&&... args) {
-  return Ref<U>(
-      Refcounted<typename std::remove_const<U>::type>::AllocateWithBlock(
+inline Ref<U, char> New(size_t length, Arg&&... args) {
+  return Ref<U, char>(
+      Refcounted<typename std::remove_const<U>::type, char>::AllocateWithBlock(
           length, std::forward<Arg>(args)...));
 }
 
