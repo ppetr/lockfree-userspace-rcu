@@ -61,12 +61,12 @@ class Placement {
   //
   // - `ptr` must be a pointer previously obtained from `Placement::Node`.
   // - `size` must be a value previously obtained from `Placement::Release`.
-  Placement(T* ptr, size_t size)
+  Placement(T *ptr, size_t size)
       : size_(size),
-        allocation_(reinterpret_cast<char*>(ptr) -
+        allocation_(reinterpret_cast<char *>(ptr) -
                     offsetof(Placeholder, node)) {}
-  Placement(Placement const&) = delete;
-  Placement(Placement&& other) {
+  Placement(Placement const &) = delete;
+  Placement(Placement &&other) {
     allocation_ = other.allocation_;
     size_ = other.size_;
     other.allocation_ = nullptr;
@@ -74,17 +74,17 @@ class Placement {
 
   ~Placement() {
     if (allocation_) {
-      std::allocator<Unit>().deallocate(static_cast<Unit*>(allocation_),
+      std::allocator<Unit>().deallocate(static_cast<Unit *>(allocation_),
                                         AllocatedUnits());
     }
   }
 
   // Returns a pointer to an uninitialized memory area available for an
   // instance of `T`.
-  T* Node() const { return reinterpret_cast<T*>(&AsPlaceholder()->node); }
+  T *Node() const { return reinterpret_cast<T *>(&AsPlaceholder()->node); }
   // Returns a pointer to an uninitialized memory area available for
   // holding `size` (specified in the constructor) elements of `A`.
-  A* Array() const { return reinterpret_cast<A*>(&AsPlaceholder()->array); }
+  A *Array() const { return reinterpret_cast<A *>(&AsPlaceholder()->array); }
 
   size_t Size() const { return size_; }
   // Returns the `Size()` and releases ownership of `Node()`.
@@ -113,12 +113,12 @@ class Placement {
            sizeof(A);
   }
 
-  Placeholder* AsPlaceholder() const {
-    return static_cast<Placeholder*>(allocation_);
+  Placeholder *AsPlaceholder() const {
+    return static_cast<Placeholder *>(allocation_);
   }
 
   size_t size_;
-  void* allocation_;
+  void *allocation_;
 };
 
 class Refcount {
@@ -175,6 +175,9 @@ class Ref;
 // memory within a single allocation block.
 //
 // See also: https://isocpp.org/wiki/faq/dtors#memory-pools
+//
+// TODO: Split the generic refcounted functionality from `Placement` to have
+//   one implementation for an `unique_ptr` and one for `Placement`.
 template <typename T, typename A,
           typename std::enable_if<!std::is_rvalue_reference<T>{} &&
                                       (!std::is_destructible<A>{} ||
@@ -188,13 +191,18 @@ class Refcounted {
   // The type is marked as `&&` to emphasize (and enforce by some compilers)
   // that the caller must not make any guarantees about the object once this is
   // called - any call to Dec can be the last one that destroys the object.
-  void Dec(bool expect_one = false) const&& {
+  void Dec(bool expect_one = false) const && {
     if (refcount_.Dec(expect_one)) {
-      // Ensure deallocation even in the (rare) case of an exception.
-      Placement<Refcounted<T, A>, A> deallocator(
-          const_cast<Refcounted<T, A>*>(this), size_);
-      this->~Refcounted<T, A>();
+      std::move(*this).Delete();
     }
+  }
+
+  // Deletes the instance and frees its allocated memory.
+  void Delete() const && {
+    // Ensure deallocation even in the (rare) case of an exception.
+    Placement<Refcounted<T, A>, A> deallocator(
+        const_cast<Refcounted<T, A> *>(this), size_);
+    this->~Refcounted<T, A>();
   }
 
   // Returns `true` iff the refcount is 1, that is, the caller is the sole
@@ -203,31 +211,31 @@ class Refcounted {
 
   // Allocates and constructs in place an instance of `T`.
   template <typename... Arg>
-  static Refcounted<T, A>* Allocate(Arg&&... args) {
+  static Refcounted<T, A> *Allocate(Arg &&... args) {
     Placement<Refcounted<T, A>, A> placement(0);
-    Refcounted<T, A>* aligned = placement.Node();
+    Refcounted<T, A> *aligned = placement.Node();
     return new (aligned)
         Refcounted<T, A>(std::move(placement), std::forward<Arg>(args)...);
   }
 
-  T& operator*() { return nested_; }
-  T const& operator*() const { return nested_; }
-  T* operator->() const { return &nested_; }
+  T &operator*() { return nested_; }
+  T const &operator*() const { return nested_; }
+  T *operator->() const { return &nested_; }
 
   // Allocates and constructs in place an instance of `T`, with an additional
   // buffer of `length` bytes.
   template <typename... Arg>
-  static Refcounted<T, A>* AllocateWithBlock(size_t length, Arg&&... args) {
+  static Refcounted<T, A> *AllocateWithBlock(size_t length, Arg &&... args) {
     Placement<Refcounted<T, A>, A> placement(length);
-    auto* node = placement.Node();
-    auto* array = new (placement.Array()) char[length];
+    auto *node = placement.Node();
+    auto *array = new (placement.Array()) char[length];
     return new (node) Refcounted<T, A>(std::move(placement), array, length,
                                        std::forward<Arg>(args)...);
   }
 
  private:
   template <typename... Arg>
-  explicit Refcounted(Placement<Refcounted<T, A>, A> placement, Arg&&... args)
+  explicit Refcounted(Placement<Refcounted<T, A>, A> placement, Arg &&... args)
       : size_(std::move(placement).Release()),
         refcount_(),
         nested_(std::forward<Arg>(args)...) {}
@@ -256,34 +264,34 @@ template <>
 class RefCtorBase<CopyTraits::copyable> {
  public:
   constexpr RefCtorBase() = default;
-  RefCtorBase(const RefCtorBase&) = default;
-  RefCtorBase(RefCtorBase&&) = default;
-  RefCtorBase& operator=(const RefCtorBase&) = default;
-  RefCtorBase& operator=(RefCtorBase&&) = default;
+  RefCtorBase(const RefCtorBase &) = default;
+  RefCtorBase(RefCtorBase &&) = default;
+  RefCtorBase &operator=(const RefCtorBase &) = default;
+  RefCtorBase &operator=(RefCtorBase &&) = default;
 };
 
 template <>
 class RefCtorBase<CopyTraits::movable> {
  public:
   constexpr RefCtorBase() = default;
-  RefCtorBase(const RefCtorBase&) = delete;
-  RefCtorBase(RefCtorBase&&) = default;
-  RefCtorBase& operator=(const RefCtorBase&) = delete;
-  RefCtorBase& operator=(RefCtorBase&&) = default;
+  RefCtorBase(const RefCtorBase &) = delete;
+  RefCtorBase(RefCtorBase &&) = default;
+  RefCtorBase &operator=(const RefCtorBase &) = delete;
+  RefCtorBase &operator=(RefCtorBase &&) = default;
 };
 
 template <typename T, typename A>
 class RefBase {
  public:
-  RefBase(RefBase const& other) { Reset(other.buffer_); }
-  RefBase(RefBase&& other) : buffer_(other.buffer_) { other.buffer_ = nullptr; }
+  RefBase(RefBase const &other) { Reset(other.buffer_); }
+  RefBase(RefBase &&other) : buffer_(other.buffer_) { other.buffer_ = nullptr; }
 
-  RefBase& operator=(RefBase const& other) {
+  RefBase &operator=(RefBase const &other) {
     assert(other.buffer_ != nullptr);
     Reset(other.buffer_);
     return *this;
   }
-  RefBase& operator=(RefBase&& other) {
+  RefBase &operator=(RefBase &&other) {
     Reset(nullptr);
     buffer_ = other.buffer_;
     other.buffer_ = nullptr;
@@ -296,20 +304,20 @@ class RefBase {
   using RefcountedType = Refcounted<typename std::remove_const<T>::type, A>;
 
   // Creates a reference with a reference counter of one.
-  constexpr explicit RefBase(RefcountedType* buffer) : buffer_(buffer) {
+  constexpr explicit RefBase(RefcountedType *buffer) : buffer_(buffer) {
 #if __cplusplus >= 201402L
     assert(buffer_ != nullptr && buffer_->IsOne());
 #endif
   }
 
-  RefcountedType* get_buffer() const& { return buffer_; }
+  RefcountedType *get_buffer() const & { return buffer_; }
   // Returns the internal buffer_ and clears the field.
 #ifdef __has_attribute
 #if __has_attribute(nodiscard)
   [[nodiscard]]
 #endif
 #endif
-  RefcountedType*
+  RefcountedType *
   move_buffer() && {
     assert(buffer_ != nullptr && buffer_->IsOne());
     auto result = buffer_;
@@ -319,7 +327,7 @@ class RefBase {
 
   // Replace the internal reference by another one, properly
   // decrementing and incrementing their counters.
-  inline void Reset(RefcountedType* buffer) {
+  inline void Reset(RefcountedType *buffer) {
     if (buffer_ != nullptr) {
       // Non-const values should not be shared, therefore we can expect
       // only a single owner.
@@ -330,7 +338,7 @@ class RefBase {
     }
   }
 
-  RefcountedType* buffer_;
+  RefcountedType *buffer_;
 };
 
 }  // namespace internal
@@ -345,14 +353,14 @@ class Ref final
     : private internal::RefBase<T, A>,
       private internal::RefCtorBase<internal::CtorCopyTraits<T>::traits> {
  public:
-  Ref(Ref const& other) = default;
-  Ref(Ref&& other) = default;
+  Ref(Ref const &other) = default;
+  Ref(Ref &&other) = default;
 
-  Ref& operator=(Ref const& other) = default;
-  Ref& operator=(Ref&& other) = default;
+  Ref &operator=(Ref const &other) = default;
+  Ref &operator=(Ref &&other) = default;
 
   template <typename U, typename... Arg>
-  friend Ref<U> New(size_t length, Arg&&... args);
+  friend Ref<U> New(size_t length, Arg &&... args);
 
   Ref<typename std::add_const<T>::type> Share() && {
     return Ref<typename std::add_const<T>::type>(
@@ -381,8 +389,8 @@ class Ref final
   // data structure), a new buffer is allocated. If it releases `shared` by the
   // time `AppendData` finishes, the buffer is reused, so no new memory
   // allocation is needed.
-  std::optional<Ref<typename std::remove_const<T>::type, A>>
-  AttemptToClaim() && {
+  std::optional<Ref<typename std::remove_const<T>::type, A>> AttemptToClaim()
+      && {
     if (get_buffer()->IsOne()) {
       auto result = Ref<typename std::remove_const<T>::type, A>(
           std::move(*this).move_buffer());
@@ -394,25 +402,30 @@ class Ref final
   }
 #endif  // __cpp_lib_optional
 
-  T& operator*() const { return **get_buffer(); }
-  T* operator->() const { return &**get_buffer(); }
+  // TODO: Refactor the operators into the move/copy super-classes so that:
+  //
+  // - `Ref<T>` allows only non-`const` access, hence `const Ref<T>` doesn't
+  //   allow any access to the content.
+  // - `Ref<const T>` provides `const`-only access.
+  T &operator*() const { return **get_buffer(); }
+  T *operator->() const { return &**get_buffer(); }
 
   // Creates a new reference to this object and returns it expressed as a raw
   // pointer. It must be passed to the Deleter function exactly once to
   // release it.
-  void* ToDeleterArg() const {
+  void *ToDeleterArg() const {
     assert(get_buffer() != nullptr);
     get_buffer()->Inc();
-    return static_cast<void*>(get_buffer());
+    return static_cast<void *>(get_buffer());
   }
 
   // Releases a reference created by `ToDeleterArg`.
   // If such a pointer is passed more than once, the behavior is undefined.
   // If a pointer different from one created by `ToDeleterArg` is passed, the
   // behavior is undefined.
-  static void Deleter(void* shared_buffer_ptr) {
+  static void Deleter(void *shared_buffer_ptr) {
     if (shared_buffer_ptr) {
-      std::move(*static_cast<RefcountedType*>(shared_buffer_ptr)).Dec();
+      std::move(*static_cast<RefcountedType *>(shared_buffer_ptr)).Dec();
     }
   }
 
@@ -421,7 +434,7 @@ class Ref final
 
  private:
   constexpr explicit Ref(
-      Refcounted<typename std::remove_const<T>::type, A>* buffer)
+      Refcounted<typename std::remove_const<T>::type, A> *buffer)
       : internal::RefBase<T, A>(buffer) {}
 
   using typename internal::RefBase<T, A>::RefcountedType;
@@ -434,7 +447,7 @@ class Ref final
 // buffer and its `size_t` length are passed as the first two arguments to a
 // constructor of `U`.
 template <typename U, typename... Arg>
-inline Ref<U, char> New(size_t length, Arg&&... args) {
+inline Ref<U, char> New(size_t length, Arg &&... args) {
   return Ref<U, char>(
       Refcounted<typename std::remove_const<U>::type, char>::AllocateWithBlock(
           length, std::forward<Arg>(args)...));
