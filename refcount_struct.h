@@ -46,9 +46,34 @@ namespace refptr {
 
 // Owns a block of memory large enough to store a properly aligned instance of
 // `T` and additional `size` number of elements of type `A`.
+//
+// TODO: Move `Placement` and `MakeUnique` into a separate module independent
+// of refcounts.
 template <typename T, typename A>
 class Placement {
  public:
+  // Calls `~T` and deletes the corresponding `Placement`.
+  // Doesn't delete the `A[]`, therefore it must be a primitive type or a
+  // trivially destructible one.
+  class Deleter {
+   public:
+    static_assert(!std::is_destructible<A>::value ||
+                      std::is_trivially_destructible<A>::value,
+                  "The array type must be primitive or trivially destructible");
+
+    void operator()(T *to_delete) {
+      Placement<T, A> deleter(to_delete, size_);
+      deleter.Node()->~T();
+    }
+
+   private:
+    Deleter(size_t size) : size_(size) {}
+
+    size_t size_;
+
+    friend class Placement<T, A>;
+  };
+
   // Allocates memory for a properly aligned instance of `T`, plus additional
   // array of `size` elements of `A`.
   explicit Placement(size_t size)
@@ -94,6 +119,13 @@ class Placement {
     return size_;
   }
 
+  // Constructs a deleter for this particular `Placement`.
+  // If used with a different instance, the behaivor is undefined.
+  Deleter ToDeleter() && {
+    allocation_ = nullptr;
+    return Deleter(size_);
+  }
+
  private:
   // Holds a properly aligned instance of `T` and an array of length 1 of `A`.
   struct Placeholder {
@@ -120,6 +152,21 @@ class Placement {
   size_t size_;
   void *allocation_;
 };
+
+// Constructs a new instance of `U` in-place using the given arguments, with an
+// additional block of memory of `B[length]`. A `B*` pointer to this buffer
+// and its `size_t` length are passed as the first two arguments to the
+// constructor of `U`.
+template <typename U, typename B, typename... Arg>
+inline std::unique_ptr<U, typename Placement<U, B>::Deleter> MakeUnique(
+    size_t length, Arg &&... args) {
+  Placement<U, B> placement(length);
+  auto *node = placement.Node();
+  auto *array = new (placement.Array()) char[length];
+  auto *value = new (node) U(array, length, std::forward<Arg>(args)...);
+  return std::unique_ptr<U, typename Placement<U, B>::Deleter>(
+      value, std::move(placement).ToDeleter());
+}
 
 class Refcount {
  public:

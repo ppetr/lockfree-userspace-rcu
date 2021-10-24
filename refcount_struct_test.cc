@@ -15,6 +15,7 @@
 #include <cassert>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <string>
 
 #include "refcount_struct.h"
@@ -49,10 +50,22 @@ class Bar {
 }  // namespace
 
 int main() {
+  using refptr::MakeUnique;
   using refptr::New;
   using refptr::Ref;
 
   int counter = 0;
+  {  // unique_ptr tests
+    auto owned = MakeUnique<Foo, char, int&, const char*>(
+        16, counter, "Lorem ipsum dolor sit amet");
+    assert(counter == 1);
+    std::cout << owned->text() << std::endl;
+    std::shared_ptr<Foo> shared(std::move(owned));
+    assert(!owned);
+    assert(counter == 1);
+    std::cout << shared->text() << std::endl;
+  }
+  assert(counter == 0);
   {
     Ref<Foo> owned(
         New<Foo, int&, const char*>(16, counter, "Lorem ipsum dolor sit amet"));
