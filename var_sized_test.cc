@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "var_sized.h"
+
 #include <cassert>
 #include <cstring>
 #include <iostream>
 #include <memory>
 #include <string>
-
-#include "refcount_struct.h"
 
 namespace {
 
@@ -42,47 +42,21 @@ class Foo {
   const char* buf_;
 };
 
-class Bar {
-  refptr::Ref<Foo> bar1;
-  refptr::Ref<const Foo> bar2;
-};
-
 }  // namespace
 
 int main() {
-  using refptr::New;
-  using refptr::Ref;
+  using refptr::MakeUnique;
 
   int counter = 0;
   {
-    Ref<Foo> owned(
-        New<Foo, int&, const char*>(16, counter, "Lorem ipsum dolor sit amet"));
+    auto owned = MakeUnique<Foo, char, int&, const char*>(
+        16, counter, "Lorem ipsum dolor sit amet");
     assert(counter == 1);
     std::cout << owned->text() << std::endl;
-    Ref<const Foo> shared(std::move(owned).Share());
+    std::shared_ptr<Foo> shared(std::move(owned));
+    assert(!owned);
     assert(counter == 1);
     std::cout << shared->text() << std::endl;
-#ifdef __cpp_lib_optional
-    auto owned_opt = std::move(shared).AttemptToClaim();
-    assert(counter == 1);
-    assert(("Attempt to claim ownership failed", owned_opt));
-    owned = *std::move(owned_opt);
-    assert(counter == 1);
-    std::cout << owned->text() << std::endl;
-#endif
   }
   assert(counter == 0);
-  {
-    void* deleter_arg;
-    {
-      Ref<Foo> owned(New<Foo, int&, const char*>(16, counter,
-                                                 "Lorem ipsum dolor sit amet"));
-      assert(counter == 1);
-      deleter_arg = owned.ToDeleterArg();
-    }
-    assert(counter == 1);
-    Ref<Foo>::Deleter(deleter_arg);
-  }
-  assert(counter == 0);
-  return 0;
 }

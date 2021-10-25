@@ -1,7 +1,7 @@
 BUILDDIR=build
 CXXFLAGS+=-Wall -Wextra
 
-tests: $(BUILDDIR)/refcount_struct_test
+tests: $(BUILDDIR)/refcount_struct_test $(BUILDDIR)/var_sized_test
 
 $(BUILDDIR):
 	mkdir -p $@
