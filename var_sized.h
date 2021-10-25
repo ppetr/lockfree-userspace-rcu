@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstddef>
 #include <memory>
 #include <new>
 #include <type_traits>
@@ -129,9 +130,9 @@ class VarAllocation {
 
 template <typename T, typename A>
 VarAllocation<T, A>::VarAllocation(T *ptr, size_t size)
-  : size_(size),
-    allocation_(reinterpret_cast<char *>(ptr) -
-                offsetof(Placeholder, node)) {}
+    : size_(size),
+      allocation_(reinterpret_cast<char *>(ptr) - offsetof(Placeholder, node)) {
+}
 
 // Constructs a new instance of `U` in-place using the given arguments, with an
 // additional block of memory of `B[length]`. A `B*` pointer to this buffer

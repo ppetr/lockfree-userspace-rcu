@@ -31,7 +31,6 @@
 
 #include <atomic>
 #include <cassert>
-#include <cstddef>
 #include <memory>
 #include <new>
 #include <type_traits>
