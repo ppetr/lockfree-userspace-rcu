@@ -63,10 +63,7 @@ class VarAllocation {
   //
   // - `ptr` must be a pointer previously obtained from `VarAllocation::Node`.
   // - `size` must be a value previously obtained from `VarAllocation::Release`.
-  VarAllocation(T *ptr, size_t size)
-      : size_(size),
-        allocation_(reinterpret_cast<char *>(ptr) -
-                    offsetof(Placeholder, node)) {}
+  VarAllocation(T *ptr, size_t size);
   VarAllocation(VarAllocation const &) = delete;
   VarAllocation(VarAllocation &&other) {
     allocation_ = other.allocation_;
@@ -129,6 +126,12 @@ class VarAllocation {
   size_t size_;
   void *allocation_;
 };
+
+template <typename T, typename A>
+VarAllocation<T, A>::VarAllocation(T *ptr, size_t size)
+  : size_(size),
+    allocation_(reinterpret_cast<char *>(ptr) -
+                offsetof(Placeholder, node)) {}
 
 // Constructs a new instance of `U` in-place using the given arguments, with an
 // additional block of memory of `B[length]`. A `B*` pointer to this buffer
