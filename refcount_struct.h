@@ -102,8 +102,8 @@ class Ref;
 //
 // See also: https://isocpp.org/wiki/faq/dtors#memory-pools
 //
-// TODO: Split the generic refcounted functionality from `Placement` to have
-//   one implementation for an `unique_ptr` and one for `Placement`.
+// TODO: Split the generic refcounted functionality from `VarAllocation` to
+//   have one implementation for an `unique_ptr` and one for `VarAllocation`.
 template <typename T, typename A,
           typename std::enable_if<!std::is_rvalue_reference<T>{} &&
                                       (!std::is_destructible<A>{} ||
@@ -126,7 +126,7 @@ class Refcounted {
   // Deletes the instance and frees its allocated memory.
   void Delete() const && {
     // Ensure deallocation even in the (rare) case of an exception.
-    Placement<Refcounted<T, A>, A> deallocator(
+    VarAllocation<Refcounted<T, A>, A> deallocator(
         const_cast<Refcounted<T, A> *>(this), size_);
     this->~Refcounted<T, A>();
   }
@@ -138,7 +138,7 @@ class Refcounted {
   // Allocates and constructs in place an instance of `T`.
   template <typename... Arg>
   static Refcounted<T, A> *Allocate(Arg &&... args) {
-    Placement<Refcounted<T, A>, A> placement(0);
+    VarAllocation<Refcounted<T, A>, A> placement(0);
     Refcounted<T, A> *aligned = placement.Node();
     return new (aligned)
         Refcounted<T, A>(std::move(placement), std::forward<Arg>(args)...);
@@ -152,7 +152,7 @@ class Refcounted {
   // buffer of `length` bytes.
   template <typename... Arg>
   static Refcounted<T, A> *AllocateWithBlock(size_t length, Arg &&... args) {
-    Placement<Refcounted<T, A>, A> placement(length);
+    VarAllocation<Refcounted<T, A>, A> placement(length);
     auto *node = placement.Node();
     auto *array = new (placement.Array()) char[length];
     return new (node) Refcounted<T, A>(std::move(placement), array, length,
@@ -161,7 +161,8 @@ class Refcounted {
 
  private:
   template <typename... Arg>
-  explicit Refcounted(Placement<Refcounted<T, A>, A> placement, Arg &&... args)
+  explicit Refcounted(VarAllocation<Refcounted<T, A>, A> placement,
+                      Arg &&... args)
       : size_(std::move(placement).Release()),
         refcount_(),
         nested_(std::forward<Arg>(args)...) {}

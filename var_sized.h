@@ -26,12 +26,10 @@ namespace refptr {
 
 // Owns a block of memory large enough to store a properly aligned instance of
 // `T` and additional `size` number of elements of type `A`.
-//
-// TODO: Rename to `VarAllocation`.
 template <typename T, typename A>
-class Placement {
+class VarAllocation {
  public:
-  // Calls `~T` and deletes the corresponding `Placement`.
+  // Calls `~T` and deletes the corresponding `VarAllocation`.
   // Doesn't delete the `A[]`, therefore it must be a primitive type or a
   // trivially destructible one.
   class Deleter {
@@ -41,7 +39,7 @@ class Placement {
                   "The array type must be primitive or trivially destructible");
 
     void operator()(T *to_delete) {
-      Placement<T, A> deleter(to_delete, size_);
+      VarAllocation<T, A> deleter(to_delete, size_);
       deleter.Node()->~T();
     }
 
@@ -50,12 +48,12 @@ class Placement {
 
     size_t size_;
 
-    friend class Placement<T, A>;
+    friend class VarAllocation<T, A>;
   };
 
   // Allocates memory for a properly aligned instance of `T`, plus additional
   // array of `size` elements of `A`.
-  explicit Placement(size_t size)
+  explicit VarAllocation(size_t size)
       : size_(size),
         allocation_(std::allocator<Unit>().allocate(AllocatedUnits())) {
     static_assert(std::is_trivial<Placeholder>::value,
@@ -63,20 +61,20 @@ class Placement {
   }
   // Creates a placement from its building blocks.
   //
-  // - `ptr` must be a pointer previously obtained from `Placement::Node`.
-  // - `size` must be a value previously obtained from `Placement::Release`.
-  Placement(T *ptr, size_t size)
+  // - `ptr` must be a pointer previously obtained from `VarAllocation::Node`.
+  // - `size` must be a value previously obtained from `VarAllocation::Release`.
+  VarAllocation(T *ptr, size_t size)
       : size_(size),
         allocation_(reinterpret_cast<char *>(ptr) -
                     offsetof(Placeholder, node)) {}
-  Placement(Placement const &) = delete;
-  Placement(Placement &&other) {
+  VarAllocation(VarAllocation const &) = delete;
+  VarAllocation(VarAllocation &&other) {
     allocation_ = other.allocation_;
     size_ = other.size_;
     other.allocation_ = nullptr;
   }
 
-  ~Placement() {
+  ~VarAllocation() {
     if (allocation_) {
       std::allocator<Unit>().deallocate(static_cast<Unit *>(allocation_),
                                         AllocatedUnits());
@@ -98,7 +96,7 @@ class Placement {
     return size_;
   }
 
-  // Constructs a deleter for this particular `Placement`.
+  // Constructs a deleter for this particular `VarAllocation`.
   // If used with a different instance, the behaivor is undefined.
   Deleter ToDeleter() && {
     allocation_ = nullptr;
@@ -137,13 +135,13 @@ class Placement {
 // and its `size_t` length are passed as the first two arguments to the
 // constructor of `U`.
 template <typename U, typename B, typename... Arg>
-inline std::unique_ptr<U, typename Placement<U, B>::Deleter> MakeUnique(
+inline std::unique_ptr<U, typename VarAllocation<U, B>::Deleter> MakeUnique(
     size_t length, Arg &&... args) {
-  Placement<U, B> placement(length);
+  VarAllocation<U, B> placement(length);
   auto *node = placement.Node();
   auto *array = new (placement.Array()) char[length];
   auto *value = new (node) U(array, length, std::forward<Arg>(args)...);
-  return std::unique_ptr<U, typename Placement<U, B>::Deleter>(
+  return std::unique_ptr<U, typename VarAllocation<U, B>::Deleter>(
       value, std::move(placement).ToDeleter());
 }
 
