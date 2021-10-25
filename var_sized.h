@@ -143,7 +143,7 @@ inline std::unique_ptr<U, typename VarAllocation<U, B>::Deleter> MakeUnique(
     size_t length, Arg &&... args) {
   VarAllocation<U, B> placement(length);
   auto *node = placement.Node();
-  auto *array = new (placement.Array()) char[length];
+  auto *array = new (placement.Array()) B[length];
   auto *value = new (node) U(array, length, std::forward<Arg>(args)...);
   return std::unique_ptr<U, typename VarAllocation<U, B>::Deleter>(
       value, std::move(placement).ToDeleter());
