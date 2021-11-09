@@ -25,40 +25,68 @@ namespace refptr {
 // Manages an instance of `T` on the heap. Copying `CopyOnWrite<T>` is as
 // cheap as copying a pointer. The actual copying of `T` is deferred until a
 // mutable reference is requested by `as_mutable`.
+//
+// Important: `as_mutable` doesn't return a stable reference. Making a copy of
+// the class can cause this reference to change. Therefore it should never be
+// exposed externally (unless external callers are aware of this behavior).
 template <typename T>
 class CopyOnWrite {
   static_assert(std::is_copy_constructible_v<T>);
 
  public:
+  template <typename... Arg>
+  explicit CopyOnWrite(std::in_place_t, Arg&&... args)
+      : refcounted_(new Refcounted<T>(std::forward<Arg>(args)...)) {}
+
   CopyOnWrite(const CopyOnWrite& that) : refcounted_(that.refcounted_) {
     refcounted_->refcount.Inc();
   }
-
-  template <typename... Arg>
-  CopyOnWrite(std::in_place_t, Arg&&... args)
-      : refcounted_(new Refcounted<T>(std::forward<Arg>(args)...)) {}
-
-  ~CopyOnWrite() {
-    if (refcounted_->refcount.Dec()) {
-      std::move(*refcounted_).SelfDelete();
-    }
+  CopyOnWrite& operator=(const CopyOnWrite& that) {
+    Release(that.refcounted_);
+    refcounted_.Inc();
+    return *this;
   }
 
+  CopyOnWrite(CopyOnWrite&& that) : refcounted_(that.refcounted_) {
+    that.refcounted_ = nullptr;
+  }
+  CopyOnWrite& operator=(CopyOnWrite&& that) {
+    Release(that.refcounted_);
+    that.refcounted_ = nullptr;
+    return *this;
+  }
+
+  static CopyOnWrite Null() { return CopyOnWrite(); }
+
+  ~CopyOnWrite() { Release(nullptr); }
+
+  operator bool() const { return refcounted_ != nullptr; }
+
   T& as_mutable() {
-    if (refcounted_->refcount.IsOne()) {
-      return refcounted_->nested;
-    }
-    Refcounted<T>& old = *refcounted_;
-    refcounted_ = new Refcounted<T>(refcounted_->nested);
-    if (old.refcount.Dec()) {
-      std::move(old).SelfDelete();
+    if (!refcounted_->refcount.IsOne()) {
+      // There are multiple instances referencing `refcounted_`, therefore a
+      // copy must be made.
+      CopyOnWrite to_release(std::in_place, refcounted_->nested);
+      std::swap(refcounted_, to_release.refcounted_);
     }
     return refcounted_->nested;
   }
   const T& operator*() const { return refcounted_->nested; }
-  T* operator->() { return &this->operator*(); }
+  const T* operator->() const { return &this->operator*(); }
 
  private:
+  CopyOnWrite() : refcounted_(nullptr) {}
+
+  // Releases `refcounted_` and replaces it with `refcounted`.
+  // The caller must ensure that `refcounted` has the appropriate incremented
+  // refcount.
+  void Release(Refcounted<T>* refcounted) {
+    if (refcounted != nullptr && refcounted->refcount.Dec()) {
+      std::move(*refcounted).SelfDelete();
+    }
+    refcounted_ = refcounted;
+  }
+
   mutable Refcounted<T>* refcounted_;
 };
 

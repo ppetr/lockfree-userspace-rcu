@@ -24,6 +24,8 @@ int main() {
 
   CopyOnWrite<std::string> cow(std::in_place, "Lorem ipsum dolor sit amet");
   std::cout << *cow << std::endl;
+  assert(cow);
   assert(*cow == "Lorem ipsum dolor sit amet");
+  assert(!cow->empty());  // Test operator->.
   assert(cow.as_mutable() == "Lorem ipsum dolor sit amet");
 }
