@@ -37,177 +37,35 @@
 #include <utility>
 
 #ifdef __has_include
-#if __has_include(<optional>)
-#include <optional>
-#endif  // __has_include(<optional>)
+#if __has_include(<variant>)
+#include <variant>
+#endif  // __has_include(<variant>)
 #endif  // __has_include
 
-#include "var_sized.h"
+#include "refcount.h"
 
 namespace refptr {
 
-class Refcount {
- public:
-  constexpr Refcount() : count_{1} {}
-
-  // Increments the reference count. Imposes no memory ordering.
-  inline void Inc() {
-    // No need for any synchronization/ordering, as the value is not inspected
-    // at all.
-    count_.fetch_add(1, std::memory_order_relaxed);
-  }
-
-  // Returns whether the atomic integer is 1.
-  inline bool IsOne() const {
-    // This thread must observe the correct value, including any prior
-    // modifications by other threads.
-    return count_.load(std::memory_order_acquire) == 1;
-  }
-
-  // Returns `true` iff the counter's value is zero after the decrement
-  // operation. In such a case the caller must destroy the referenced object,
-  // and the counter's state becomes undefined.
-  //
-  // A caller should pass `expect_one = true` if there is a reasonable chance
-  // that there is only a single reference to the object. This allows slight
-  // performane optimization when reqesting the appropriate memory barriers.
-  inline bool Dec(bool expect_one = false) {
-    // This thread must observe the correct value if `refcount` reaches zero,
-    // including any prior modifications by other threads. All other threads
-    // must observe the result of the operation.
-    if (expect_one && IsOne()) {
-      // Knowing the object will be destructed, we don't decrement the counter.
-      // This way, we save the _release operation_ that would be needed for
-      // decrementing it below.
-      return true;
-    }
-    int32_t refcount = count_.fetch_sub(1, std::memory_order_acq_rel);
-    assert(refcount > 0);
-    return refcount == 1;
-  }
-
- private:
-  std::atomic<int32_t> count_;
-};
-
-template <typename T, typename A>
+template <typename T, class Deleter>
 class Ref;
-
-// Holds a instance of `T` in a self-owned block of memory. The instance is
-// properly destroyed and the block of memory freed once the reference count
-// drops to zero.
-// The memory block can be optionally larger to provide additional piece of
-// memory within a single allocation block.
-//
-// See also: https://isocpp.org/wiki/faq/dtors#memory-pools
-//
-// TODO: Split the generic refcounted functionality from `VarAllocation` to
-//   have one implementation for an `unique_ptr` and one for `VarAllocation`.
-template <typename T, typename A,
-          typename std::enable_if<!std::is_rvalue_reference<T>{} &&
-                                      (!std::is_destructible<A>{} ||
-                                       std::is_trivially_destructible<A>{}),
-                                  bool>::type = true>
-class Refcounted {
- public:
-  // Increment the internal reference counter. Must be paired with `Dec`.
-  inline void Inc() const { refcount_.Inc(); }
-
-  // The type is marked as `&&` to emphasize (and enforce by some compilers)
-  // that the caller must not make any guarantees about the object once this is
-  // called - any call to Dec can be the last one that destroys the object.
-  void Dec(bool expect_one = false) const && {
-    if (refcount_.Dec(expect_one)) {
-      std::move(*this).Delete();
-    }
-  }
-
-  // Deletes the instance and frees its allocated memory.
-  void Delete() const && {
-    // Ensure deallocation even in the (rare) case of an exception.
-    VarAllocation<Refcounted<T, A>, A> deallocator(
-        const_cast<Refcounted<T, A> *>(this), size_);
-    this->~Refcounted<T, A>();
-  }
-
-  // Returns `true` iff the refcount is 1, that is, the caller is the sole
-  // owner of the object.
-  inline bool IsOne() const { return refcount_.IsOne(); }
-
-  // Allocates and constructs in place an instance of `T`.
-  template <typename... Arg>
-  static Refcounted<T, A> *Allocate(Arg &&... args) {
-    VarAllocation<Refcounted<T, A>, A> placement(0);
-    Refcounted<T, A> *aligned = placement.Node();
-    return new (aligned)
-        Refcounted<T, A>(std::move(placement), std::forward<Arg>(args)...);
-  }
-
-  T &operator*() { return nested_; }
-  T const &operator*() const { return nested_; }
-  T *operator->() const { return &nested_; }
-
-  // Allocates and constructs in place an instance of `T`, with an additional
-  // buffer of `length` bytes.
-  template <typename... Arg>
-  static Refcounted<T, A> *AllocateWithBlock(size_t length, Arg &&... args) {
-    VarAllocation<Refcounted<T, A>, A> placement(length);
-    auto *node = placement.Node();
-    auto *array = new (placement.Array()) char[length];
-    return new (node) Refcounted<T, A>(std::move(placement), array, length,
-                                       std::forward<Arg>(args)...);
-  }
-
- private:
-  template <typename... Arg>
-  explicit Refcounted(VarAllocation<Refcounted<T, A>, A> placement,
-                      Arg &&... args)
-      : size_(std::move(placement).Release()),
-        refcount_(),
-        nested_(std::forward<Arg>(args)...) {}
-
-  const size_t size_;
-  mutable Refcount refcount_;
-  T nested_;
-};
 
 namespace internal {
 
-// Copyable implies movable.
-enum class CopyTraits { copyable = 0, movable = 1 };
+// Distinguishes `Ref<T>` (`unique`) and `Ref<const T>` (`shared`).
+enum class OwnershipTraits { shared = 0, unique = 1 };
 
 template <typename T>
-struct CtorCopyTraits {
-  static constexpr CopyTraits traits =
-      std::is_const<T>::value ? CopyTraits::copyable : CopyTraits::movable;
+struct BaseOwnershipTraits {
+  static constexpr OwnershipTraits traits = std::is_const<T>::value
+                                                ? OwnershipTraits::shared
+                                                : OwnershipTraits::unique;
 };
 
-// Base class for enabling/disabling copy/move constructor.
-template <CopyTraits>
-class RefCtorBase;
+template <typename T, class Deleter, OwnershipTraits>
+class RefBase;
 
-template <>
-class RefCtorBase<CopyTraits::copyable> {
- public:
-  constexpr RefCtorBase() = default;
-  RefCtorBase(const RefCtorBase &) = default;
-  RefCtorBase(RefCtorBase &&) = default;
-  RefCtorBase &operator=(const RefCtorBase &) = default;
-  RefCtorBase &operator=(RefCtorBase &&) = default;
-};
-
-template <>
-class RefCtorBase<CopyTraits::movable> {
- public:
-  constexpr RefCtorBase() = default;
-  RefCtorBase(const RefCtorBase &) = delete;
-  RefCtorBase(RefCtorBase &&) = default;
-  RefCtorBase &operator=(const RefCtorBase &) = delete;
-  RefCtorBase &operator=(RefCtorBase &&) = default;
-};
-
-template <typename T, typename A>
-class RefBase {
+template <typename T, class Deleter>
+class RefBase<T, Deleter, OwnershipTraits::shared> {
  public:
   RefBase(RefBase const &other) { Reset(other.buffer_); }
   RefBase(RefBase &&other) : buffer_(other.buffer_) { other.buffer_ = nullptr; }
@@ -218,6 +76,7 @@ class RefBase {
     return *this;
   }
   RefBase &operator=(RefBase &&other) {
+    assert(other.buffer_ != nullptr);
     Reset(nullptr);
     buffer_ = other.buffer_;
     other.buffer_ = nullptr;
@@ -226,157 +85,144 @@ class RefBase {
 
   ~RefBase() { Reset(nullptr); }
 
+  const T &operator*() const { return buffer_->nested; }
+  const T *operator->() const { return &buffer_->nested; }
+
+#ifdef __has_include
+#if __has_include(<variant>)
+  std::variant<Ref<T, Deleter>, Ref<const T, Deleter>> AttemptToClaim() &&;
+#endif  // __has_include(<variant>)
+#endif  // __has_include
+
  protected:
-  using RefcountedType = Refcounted<typename std::remove_const<T>::type, A>;
+  constexpr explicit RefBase(const Refcounted<T, Deleter> *buffer)
+      : buffer_(buffer) {}
 
-  // Creates a reference with a reference counter of one.
-  constexpr explicit RefBase(RefcountedType *buffer) : buffer_(buffer) {
-#if __cplusplus >= 201402L
-    assert(buffer_ != nullptr && buffer_->IsOne());
-#endif
-  }
-
-  RefcountedType *get_buffer() const & { return buffer_; }
-  // Returns the internal buffer_ and clears the field.
-#ifdef __has_attribute
-#if __has_attribute(nodiscard)
-  [[nodiscard]]
-#endif
-#endif
-  RefcountedType *
-  move_buffer() && {
-    assert(buffer_ != nullptr && buffer_->IsOne());
-    auto result = buffer_;
-    buffer_ = nullptr;
-    return result;
-  }
-
-  // Replace the internal reference by another one, properly
-  // decrementing and incrementing their counters.
-  inline void Reset(RefcountedType *buffer) {
-    if (buffer_ != nullptr) {
-      // Non-const values should not be shared, therefore we can expect
-      // only a single owner.
-      std::move(*buffer_).Dec(/*expect_one=*/!std::is_const<T>::value);
+  inline void Reset(const Refcounted<T, Deleter> *buffer) {
+    if ((buffer_ != nullptr) && buffer_->refcount.Dec()) {
+      const_cast<Refcounted<T, Deleter> &&>(std::move(*buffer_)).SelfDelete();
     }
     if ((buffer_ = buffer) != nullptr) {
-      buffer_->Inc();
+      buffer_->refcount.Inc();
     }
   }
 
-  RefcountedType *buffer_;
+  Refcounted<T, Deleter> *move_buffer() && {
+    auto *buffer = buffer_;
+    buffer_ = nullptr;
+    return const_cast<Refcounted<T, Deleter> *>(buffer);
+  }
+
+  const Refcounted<T, Deleter> *buffer_;
+};
+
+template <typename T, class Deleter>
+class RefBase<T, Deleter, OwnershipTraits::unique> {
+ public:
+  RefBase(RefBase const &other) = delete;
+  RefBase(RefBase &&other) : buffer_(other.buffer_) { other.buffer_ = nullptr; }
+
+  RefBase &operator=(RefBase const &other) {
+    Reset(other.buffer_);
+    return *this;
+  }
+  RefBase &operator=(RefBase &&other) = delete;
+
+  ~RefBase() { Reset(nullptr); }
+
+  T &operator*() { return buffer_->nested; }
+  T *operator->() { return &buffer_->nested; }
+
+  Ref<const T, Deleter> Share() &&;
+
+ protected:
+  constexpr explicit RefBase(Refcounted<T, Deleter> *buffer)
+      : buffer_(buffer) {}
+
+  inline void Reset(Refcounted<T, Deleter> *buffer) {
+    if (buffer_ != nullptr) {
+      assert(buffer_->refcount.IsOne());
+      std::move(*buffer_).SelfDelete();
+    }
+    buffer_ = buffer;
+  }
+
+  Refcounted<T, Deleter> *move_buffer() && {
+    auto *buffer = buffer_;
+    buffer_ = nullptr;
+    return buffer;
+  }
+
+  Refcounted<T, Deleter> *buffer_;
 };
 
 }  // namespace internal
 
-// References a ref-counted instance of `T`.
+// Holds a reference counted instance of `T` in a self-owned block of memory.
+// The instance is properly destroyed and the block of memory freed once the
+// reference count drops to zero.
 //
 // Instances of `Ref<const T>` are copyable, because there is no risk of
 // concurrent modifications.
 // Instances of `Ref<T>`, where `T` is non-`const`, are move-only.
-template <typename T, typename A = char>
+// They can be converted to each other with `Ref<T>::Share()` and
+// `Ref<const T>::AttemptToClain()`.
+template <typename T,
+          class Deleter =
+              DefaultRefDeleter<typename std::remove_const<T>::type>>
 class Ref final
-    : private internal::RefBase<T, A>,
-      private internal::RefCtorBase<internal::CtorCopyTraits<T>::traits> {
+    : public internal::RefBase<typename std::remove_const<T>::type, Deleter,
+                               internal::BaseOwnershipTraits<T>::traits> {
+ private:
+  using Base = internal::RefBase<typename std::remove_const<T>::type, Deleter,
+                                 internal::BaseOwnershipTraits<T>::traits>;
+
  public:
+  constexpr explicit Ref(
+      Refcounted<typename std::remove_const<T>::type, Deleter> *buffer)
+      : Base(buffer) {}
+
+  template <typename U = std::remove_const<T>,
+            typename std::enable_if<!std::is_same<U, T>::value>::type>
+  Ref(Ref<U, Deleter> &&unique) : Ref(unique.move_buffer()) {}
+
   Ref(Ref const &other) = default;
   Ref(Ref &&other) = default;
 
   Ref &operator=(Ref const &other) = default;
   Ref &operator=(Ref &&other) = default;
 
-  template <typename U, typename... Arg>
-  friend Ref<U> New(size_t length, Arg &&... args);
-
-  Ref<typename std::add_const<T>::type> Share() && {
-    return Ref<typename std::add_const<T>::type>(
-        std::move(*this).move_buffer());
-  }
-
-#ifdef __cpp_lib_optional
-  // If `this` is the only instance referencing the internal data-structure,
-  // converts it into a non-const Ref. Otherwise it is discarded.
-  //
-  // Example:
-  //
-  //   for (std::optional<Ref<T>> reused; HaveData(); ) {
-  //     Ref<T> buffer(reused
-  //        ? *std::move(reused)
-  //        : Ref<T>::AllocateWithBlock(...));
-  //     // Fill buffer with data.
-  //     Ref<const T> shared = std::move(reused);
-  //     consumer.AppendData(shared);
-  //     // If the consumer released the shared pointer by now, the buffer
-  //     // can be reused.
-  //     reused = std::move(shared).AttemptToClaim();
-  //   }
-  //
-  // Here if `consumer` keeps `shared` alive (for example building them into a
-  // data structure), a new buffer is allocated. If it releases `shared` by the
-  // time `AppendData` finishes, the buffer is reused, so no new memory
-  // allocation is needed.
-  std::optional<Ref<typename std::remove_const<T>::type, A>> AttemptToClaim()
-      && {
-    if (get_buffer()->IsOne()) {
-      auto result = Ref<typename std::remove_const<T>::type, A>(
-          std::move(*this).move_buffer());
-      return std::make_optional(std::move(result));
-    } else {
-      internal::RefBase<T, A>::Reset(nullptr);
-      return std::nullopt;
-    }
-  }
-#endif  // __cpp_lib_optional
-
-  // TODO: Refactor the operators into the move/copy super-classes so that:
-  //
-  // - `Ref<T>` allows only non-`const` access, hence `const Ref<T>` doesn't
-  //   allow any access to the content.
-  // - `Ref<const T>` provides `const`-only access.
-  T &operator*() const { return **get_buffer(); }
-  T *operator->() const { return &**get_buffer(); }
-
-  // Creates a new reference to this object and returns it expressed as a raw
-  // pointer. It must be passed to the Deleter function exactly once to
-  // release it.
-  void *ToDeleterArg() const {
-    assert(get_buffer() != nullptr);
-    get_buffer()->Inc();
-    return static_cast<void *>(get_buffer());
-  }
-
-  // Releases a reference created by `ToDeleterArg`.
-  // If such a pointer is passed more than once, the behavior is undefined.
-  // If a pointer different from one created by `ToDeleterArg` is passed, the
-  // behavior is undefined.
-  static void Deleter(void *shared_buffer_ptr) {
-    if (shared_buffer_ptr) {
-      std::move(*static_cast<RefcountedType *>(shared_buffer_ptr)).Dec();
-    }
-  }
-
-  friend class Ref<typename std::add_const<T>::type, A>;
-  friend class Ref<typename std::remove_const<T>::type, A>;
-
- private:
-  constexpr explicit Ref(
-      Refcounted<typename std::remove_const<T>::type, A> *buffer)
-      : internal::RefBase<T, A>(buffer) {}
-
-  using typename internal::RefBase<T, A>::RefcountedType;
-  using internal::RefBase<T, A>::get_buffer;
-  using internal::RefBase<T, A>::move_buffer;
+  friend class Ref<typename std::add_const<T>::type, Deleter>;
+  friend class Ref<typename std::remove_const<T>::type, Deleter>;
 };
 
-// Constructs a new instance of `U` in-place, with the given arguments with an
-// additional block of memory of size `length`. A `char*` pointer to this
-// buffer and its `size_t` length are passed as the first two arguments to a
-// constructor of `U`.
-template <typename U, typename... Arg>
-inline Ref<U, char> New(size_t length, Arg &&... args) {
-  return Ref<U, char>(
-      Refcounted<typename std::remove_const<U>::type, char>::AllocateWithBlock(
-          length, std::forward<Arg>(args)...));
+namespace internal {
+
+#ifdef __has_include
+#if __has_include(<variant>)
+template <typename T, class Deleter>
+std::variant<Ref<T, Deleter>, Ref<const T, Deleter>>
+RefBase<T, Deleter, OwnershipTraits::shared>::AttemptToClaim() && {
+  if (buffer_->refcount.IsOne()) {
+    return Ref<T, Deleter>(std::move(*this).move_buffer());
+  } else {
+    return Ref<const T, Deleter>(std::move(*this).move_buffer());
+  }
+}
+#endif  // __has_include(<variant>)
+#endif  // __has_include
+
+template <typename T, class Deleter>
+Ref<const T, Deleter> RefBase<T, Deleter, OwnershipTraits::unique>::Share() && {
+  return Ref<const T, Deleter>(std::move(*this).move_buffer());
+}
+
+}  // namespace internal
+
+template <typename T, typename... Arg>
+inline Ref<T, DefaultRefDeleter<T>> New(Arg &&... args) {
+  return Ref<T, DefaultRefDeleter<T>>(
+      new Refcounted<T, DefaultRefDeleter<T>>(std::forward<Arg>(args)...));
 }
 
 }  // namespace refptr

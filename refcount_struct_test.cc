@@ -24,6 +24,9 @@ namespace {
 
 class Foo {
  public:
+  Foo(int& counter, const char* text) : counter_(counter), buf_(text) {
+    counter_++;
+  }
   Foo(char* buf, size_t len, int& counter, const char* text)
       : counter_(counter), buf_(buf) {
     strncpy(buf, text, len);
@@ -56,32 +59,21 @@ int main() {
   int counter = 0;
   {
     Ref<Foo> owned(
-        New<Foo, int&, const char*>(16, counter, "Lorem ipsum dolor sit amet"));
+        New<Foo, int&, const char*>(counter, "Lorem ipsum dolor sit amet"));
     assert(counter == 1);
     std::cout << owned->text() << std::endl;
-    Ref<const Foo> shared(std::move(owned).Share());
+    Ref<Foo> owned2 = std::move(owned);
+    assert(counter == 1);
+    std::cout << owned2->text() << std::endl;
+    Ref<const Foo> shared(std::move(owned2).Share());
     assert(counter == 1);
     std::cout << shared->text() << std::endl;
-#ifdef __cpp_lib_optional
-    auto owned_opt = std::move(shared).AttemptToClaim();
+#ifdef __cpp_lib_variant
+    auto owned_var = std::move(shared).AttemptToClaim();
     assert(counter == 1);
-    assert(("Attempt to claim ownership failed", owned_opt));
-    owned = *std::move(owned_opt);
-    assert(counter == 1);
-    std::cout << owned->text() << std::endl;
+    assert(("Attempt to claim ownership failed", owned_var.index() == 0));
+    std::cout << std::get<0>(owned_var)->text() << std::endl;
 #endif
-  }
-  assert(counter == 0);
-  {
-    void* deleter_arg;
-    {
-      Ref<Foo> owned(New<Foo, int&, const char*>(16, counter,
-                                                 "Lorem ipsum dolor sit amet"));
-      assert(counter == 1);
-      deleter_arg = owned.ToDeleterArg();
-    }
-    assert(counter == 1);
-    Ref<Foo>::Deleter(deleter_arg);
   }
   assert(counter == 0);
   return 0;

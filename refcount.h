@@ -88,7 +88,7 @@ struct Refcounted : private Deleter {
   Refcounted(Arg&&... args) : refcount(), nested(std::forward<Arg>(args)...) {}
 
   void SelfDelete() && {
-    // Move/copy out the deleter to a local variable so that we `this` be
+    // Move/copy out the deleter to a local variable so that `this` can be
     // destroyed.
     Deleter deleter = std::move(*this);
     (void)deleter.Delete(this);
