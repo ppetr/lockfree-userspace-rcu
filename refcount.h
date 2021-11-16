@@ -79,9 +79,9 @@ struct DefaultRefDeleter;
 // then invoked on `this`.
 template <typename T, class Deleter = DefaultRefDeleter<T>>
 struct Refcounted : private Deleter {
-  static_assert(std::is_copy_constructible_v<Deleter> ||
-                std::is_move_constructible_v<Deleter>);
-  static_assert(!std::is_final_v<Deleter>);
+  static_assert(std::is_copy_constructible<Deleter>::value ||
+                std::is_move_constructible<Deleter>::value);
+  static_assert(!std::is_final<Deleter>::value);
 
  public:
   template <typename... Arg>

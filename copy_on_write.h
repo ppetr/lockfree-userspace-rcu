@@ -15,6 +15,10 @@
 #ifndef _COPY_ON_WRITE_H
 #define _COPY_ON_WRITE_H
 
+#if __cplusplus < 201703L
+#warning Until migrated to absl::variant, this module requires C++17
+#else
+
 #include <type_traits>
 #include <utility>
 
@@ -31,9 +35,11 @@ namespace refptr {
 // exposed externally (unless external callers are aware of this behavior).
 template <typename T>
 class CopyOnWrite {
-  static_assert(std::is_copy_constructible_v<T>);
+  static_assert(std::is_copy_constructible<T>::value);
 
  public:
+  // TODO: Use absl::variant to support C++11 and later.
+  // https://github.com/abseil/abseil-cpp/blob/master/absl/types/variant.h
   template <typename... Arg>
   explicit CopyOnWrite(std::in_place_t, Arg&&... args)
       : refcounted_(new Refcounted<T>(std::forward<Arg>(args)...)) {}
@@ -91,5 +97,7 @@ class CopyOnWrite {
 };
 
 }  // namespace refptr
+
+#endif  // __cplusplus < 201703L
 
 #endif  // _COPY_ON_WRITE_H
