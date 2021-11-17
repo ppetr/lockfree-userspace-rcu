@@ -138,9 +138,9 @@ VarAllocation<T, A>::VarAllocation(T *ptr, size_t size)
 }
 
 // Constructs a new instance of `U` in-place using the given arguments, with an
-// additional block of memory of `B[length]`. A `B*` pointer to this buffer
-// and its `size_t` length are passed as the first two arguments to the
-// constructor of `U`.
+// additional block of memory of `B[length]`, with a single memory allocation.
+// A `B*` pointer to this buffer and its `size_t` length are passed as the
+// first two arguments to the constructor of `U`.
 template <typename U, typename B, typename... Arg>
 inline std::unique_ptr<U, typename VarAllocation<U, B>::Deleter> MakeUnique(
     size_t length, Arg &&... args) {
@@ -172,9 +172,9 @@ class VarRefDeleter {
   size_t length;
 };
 
-// Similar to `MakeUnique` above with the difference that it creates a
-// reference counted value to allow efficient and type-safe sharing of the
-// construted value.
+// Similar to `MakeUnique` above, also with a single memory allocation, with
+// the difference that it creates a reference counted value to allow efficient
+// and type-safe sharing of the construted value.
 template <typename U, typename B, typename... Arg>
 inline Ref<U, VarRefDeleter<U, B>> MakeRefCounted(size_t length,
                                                   Arg &&... args) {
