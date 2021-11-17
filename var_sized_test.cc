@@ -45,6 +45,7 @@ class Foo {
 }  // namespace
 
 int main() {
+  using refptr::MakeRefCounted;
   using refptr::MakeUnique;
 
   int counter = 0;
@@ -55,6 +56,16 @@ int main() {
     std::cout << owned->text() << std::endl;
     std::shared_ptr<Foo> shared(std::move(owned));
     assert(!owned);
+    assert(counter == 1);
+    std::cout << shared->text() << std::endl;
+  }
+  assert(counter == 0);
+  {
+    auto owned = MakeRefCounted<Foo, char, int&, const char*>(
+        16, counter, "Lorem ipsum dolor sit amet");
+    assert(counter == 1);
+    std::cout << owned->text() << std::endl;
+    auto shared = std::move(owned).Share();
     assert(counter == 1);
     std::cout << shared->text() << std::endl;
   }

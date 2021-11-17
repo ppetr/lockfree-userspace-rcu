@@ -209,8 +209,8 @@ Ref<const T, Deleter> RefBase<T, Deleter, OwnershipTraits::unique>::Share() && {
 
 template <typename T, typename... Arg>
 inline Ref<T, DefaultRefDeleter<T>> New(Arg &&... args) {
-  return Ref<T, DefaultRefDeleter<T>>(
-      new Refcounted<T, DefaultRefDeleter<T>>(std::forward<Arg>(args)...));
+  return Ref<T, DefaultRefDeleter<T>>(new Refcounted<T, DefaultRefDeleter<T>>(
+      DefaultRefDeleter<T>(), std::forward<Arg>(args)...));
 }
 
 }  // namespace refptr

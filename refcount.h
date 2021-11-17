@@ -80,16 +80,19 @@ struct DefaultRefDeleter;
 template <typename T, class Deleter = DefaultRefDeleter<T>>
 struct Refcounted : private Deleter {
   static_assert(std::is_copy_constructible<Deleter>::value ||
-                std::is_move_constructible<Deleter>::value,
-		"The Deleter must be copy-constructible or move-constructible");
+                    std::is_move_constructible<Deleter>::value,
+                "The Deleter must be copy-constructible or move-constructible");
 #if __cplusplus >= 201402L
-  static_assert(!std::is_final<Deleter>::value, "The Deleter must not be `final`");
+  static_assert(!std::is_final<Deleter>::value,
+                "The Deleter must not be `final`");
 #endif  // __cplusplus >= 201703L
-
 
  public:
   template <typename... Arg>
-  Refcounted(Arg&&... args) : refcount(), nested(std::forward<Arg>(args)...) {}
+  Refcounted(Deleter deleter, Arg&&... args)
+      : Deleter(std::move(deleter)),
+        refcount(),
+        nested(std::forward<Arg>(args)...) {}
 
   void SelfDelete() && {
     // Move/copy out the deleter to a local variable so that `this` can be

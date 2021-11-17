@@ -32,12 +32,14 @@ namespace refptr {
 // exposed externally (unless external callers are aware of this behavior).
 template <typename T>
 class CopyOnWrite {
-  static_assert(std::is_copy_constructible<T>::value, "T must be copy-constructible");
+  static_assert(std::is_copy_constructible<T>::value,
+                "T must be copy-constructible");
 
  public:
   template <typename... Arg>
   explicit CopyOnWrite(absl::in_place_t, Arg&&... args)
-      : refcounted_(new Refcounted<T>(std::forward<Arg>(args)...)) {}
+      : refcounted_(new Refcounted<T>(DefaultRefDeleter<T>(),
+                                      std::forward<Arg>(args)...)) {}
 
   CopyOnWrite(const CopyOnWrite& that) : refcounted_(that.refcounted_) {
     refcounted_->refcount.Inc();

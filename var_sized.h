@@ -12,13 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#ifndef _VAR_SIZED_H
+#define _VAR_SIZED_H
+
 #include <cstddef>
 #include <memory>
 #include <new>
 #include <type_traits>
 
-#ifndef _VAR_SIZED_H
-#define _VAR_SIZED_H
+#include "refcount.h"
+#include "refcount_struct.h"
 
 // Variable-sized class allocation. Allows to create a new instance of a class
 // together with an array in with single memory allocation.
@@ -147,6 +150,41 @@ inline std::unique_ptr<U, typename VarAllocation<U, B>::Deleter> MakeUnique(
   auto *value = new (node) U(array, length, std::forward<Arg>(args)...);
   return std::unique_ptr<U, typename VarAllocation<U, B>::Deleter>(
       value, std::move(placement).ToDeleter());
+}
+
+// Deleter for reference counted, variable-sized structures of type `T`.
+template <typename T, typename A>
+class VarRefDeleter {
+ public:
+  using RefType = Refcounted<T, VarRefDeleter<T, A>>;
+
+  // Takes ownership of a `VarAllocation` to be deleted by `Delete`.
+  VarRefDeleter(VarAllocation<RefType, A> &&placement)
+      : length(std::move(placement).Release()) {}
+
+  // Runs the destructor of `*to_delete` and deallocates its `VarAllocation`.
+  void Delete(RefType *to_delete) {
+    VarAllocation<RefType, A> placement(to_delete, length);
+    to_delete->~RefType();
+  }
+
+ private:
+  size_t length;
+};
+
+// Similar to `MakeUnique` above with the difference that it creates a
+// reference counted value to allow efficient and type-safe sharing of the
+// construted value.
+template <typename U, typename B, typename... Arg>
+inline Ref<U, VarRefDeleter<U, B>> MakeRefCounted(size_t length,
+                                                  Arg &&... args) {
+  using RefType = Refcounted<U, VarRefDeleter<U, B>>;
+  VarAllocation<RefType, B> placement(length);
+  auto *node = placement.Node();
+  auto *array = new (placement.Array()) B[length];
+  auto *value = new (node) RefType(VarRefDeleter<U, B>(std::move(placement)),
+                                   array, length, std::forward<Arg>(args)...);
+  return Ref<U, VarRefDeleter<U, B>>(value);
 }
 
 }  // namespace refptr
