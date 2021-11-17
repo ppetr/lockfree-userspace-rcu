@@ -11,7 +11,8 @@ together with an array of size `length` in a **single allocation**.  The array
 is passed as an additional argument when constructing `T`. Proper destruction
 is ensured by a custom deleter.
 
-Type `Ref` manages a reference-counted value on the heap with type-safe sharing:
+Type [`Ref`](ref.h) manages a reference-counted value on the heap with
+type-safe sharing:
 
 - `Ref<T>` allows mutable access to `T` and is move-only. Always contains a
   value (unless moved out).
