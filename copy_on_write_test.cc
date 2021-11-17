@@ -19,15 +19,15 @@
 #include <string>
 #include <utility>
 
+#include "absl/utility/utility.h"
+
 int main() {
-#if __cplusplus >= 201703L
   using refptr::CopyOnWrite;
 
-  CopyOnWrite<std::string> cow(std::in_place, "Lorem ipsum dolor sit amet");
+  CopyOnWrite<std::string> cow(absl::in_place, "Lorem ipsum dolor sit amet");
   std::cout << *cow << std::endl;
   assert(cow);
   assert(*cow == "Lorem ipsum dolor sit amet");
   assert(!cow->empty());  // Test operator->.
   assert(cow.as_mutable() == "Lorem ipsum dolor sit amet");
-#endif  // __cplusplus < 201703L
 }

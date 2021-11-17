@@ -15,13 +15,10 @@
 #ifndef _COPY_ON_WRITE_H
 #define _COPY_ON_WRITE_H
 
-#if __cplusplus < 201703L
-#warning Until migrated to absl::variant, this module requires C++17
-#else
-
 #include <type_traits>
 #include <utility>
 
+#include "absl/utility/utility.h"
 #include "refcount.h"
 
 namespace refptr {
@@ -38,10 +35,8 @@ class CopyOnWrite {
   static_assert(std::is_copy_constructible<T>::value);
 
  public:
-  // TODO: Use absl::variant to support C++11 and later.
-  // https://github.com/abseil/abseil-cpp/blob/master/absl/types/variant.h
   template <typename... Arg>
-  explicit CopyOnWrite(std::in_place_t, Arg&&... args)
+  explicit CopyOnWrite(absl::in_place_t, Arg&&... args)
       : refcounted_(new Refcounted<T>(std::forward<Arg>(args)...)) {}
 
   CopyOnWrite(const CopyOnWrite& that) : refcounted_(that.refcounted_) {
@@ -72,7 +67,7 @@ class CopyOnWrite {
     if (!refcounted_->refcount.IsOne()) {
       // There are multiple instances referencing `refcounted_`, therefore a
       // copy must be made.
-      CopyOnWrite to_release(std::in_place, refcounted_->nested);
+      CopyOnWrite to_release(absl::in_place, refcounted_->nested);
       std::swap(refcounted_, to_release.refcounted_);
     }
     return refcounted_->nested;
@@ -97,7 +92,5 @@ class CopyOnWrite {
 };
 
 }  // namespace refptr
-
-#endif  // __cplusplus < 201703L
 
 #endif  // _COPY_ON_WRITE_H
