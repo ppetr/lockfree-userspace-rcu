@@ -68,12 +68,10 @@ int main() {
     Ref<const Foo> shared(std::move(owned2).Share());
     assert(counter == 1);
     std::cout << shared->text() << std::endl;
-#ifdef __cpp_lib_variant
     auto owned_var = std::move(shared).AttemptToClaim();
     assert(counter == 1);
     assert(("Attempt to claim ownership failed", owned_var.index() == 0));
-    std::cout << std::get<0>(owned_var)->text() << std::endl;
-#endif
+    std::cout << absl::get<0>(owned_var)->text() << std::endl;
   }
   assert(counter == 0);
   return 0;

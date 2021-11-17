@@ -22,7 +22,21 @@ set(CMAKE_CXX_STANDARD 11)
 
 add_subdirectory(abseil-cpp)
 
-# TODO: Add other interfaces in the library.
+# Var-sized and ref-counted structures.
+
+add_library(var_sized INTERFACE)
+target_include_directories(var_sized INTERFACE .)
+target_link_libraries(var_sized INTERFACE absl::variant)
+
+add_executable(refcount_struct_test refcount_struct_test.cc)
+target_link_libraries(refcount_struct_test var_sized absl::variant)
+add_test(NAME refcount_struct_test COMMAND refcount_struct_test)
+
+add_executable(var_sized_test var_sized_test.cc)
+target_link_libraries(var_sized_test var_sized absl::variant)
+add_test(NAME var_sized_test COMMAND var_sized_test)
+
+# Copy on Write.
 
 add_library(copy_on_write INTERFACE)
 target_include_directories(copy_on_write INTERFACE .)

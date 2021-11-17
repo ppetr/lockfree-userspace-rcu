@@ -36,11 +36,7 @@
 #include <type_traits>
 #include <utility>
 
-#ifdef __has_include
-#if __has_include(<variant>)
-#include <variant>
-#endif  // __has_include(<variant>)
-#endif  // __has_include
+#include "absl/types/variant.h"
 
 #include "refcount.h"
 
@@ -88,11 +84,7 @@ class RefBase<T, Deleter, OwnershipTraits::shared> {
   const T &operator*() const { return buffer_->nested; }
   const T *operator->() const { return &buffer_->nested; }
 
-#ifdef __has_include
-#if __has_include(<variant>)
-  std::variant<Ref<T, Deleter>, Ref<const T, Deleter>> AttemptToClaim() &&;
-#endif  // __has_include(<variant>)
-#endif  // __has_include
+  absl::variant<Ref<T, Deleter>, Ref<const T, Deleter>> AttemptToClaim() &&;
 
  protected:
   constexpr explicit RefBase(const Refcounted<T, Deleter> *buffer)
@@ -198,10 +190,8 @@ class Ref final
 
 namespace internal {
 
-#ifdef __has_include
-#if __has_include(<variant>)
 template <typename T, class Deleter>
-std::variant<Ref<T, Deleter>, Ref<const T, Deleter>>
+absl::variant<Ref<T, Deleter>, Ref<const T, Deleter>>
 RefBase<T, Deleter, OwnershipTraits::shared>::AttemptToClaim() && {
   if (buffer_->refcount.IsOne()) {
     return Ref<T, Deleter>(std::move(*this).move_buffer());
@@ -209,8 +199,6 @@ RefBase<T, Deleter, OwnershipTraits::shared>::AttemptToClaim() && {
     return Ref<const T, Deleter>(std::move(*this).move_buffer());
   }
 }
-#endif  // __has_include(<variant>)
-#endif  // __has_include
 
 template <typename T, class Deleter>
 Ref<const T, Deleter> RefBase<T, Deleter, OwnershipTraits::unique>::Share() && {
