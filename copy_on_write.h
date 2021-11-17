@@ -19,7 +19,7 @@
 #include <utility>
 
 #include "absl/utility/utility.h"
-#include "refcount.h"
+#include "reference_counted.h"
 
 namespace refptr {
 

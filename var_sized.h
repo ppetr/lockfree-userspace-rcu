@@ -20,8 +20,8 @@
 #include <new>
 #include <type_traits>
 
-#include "refcount.h"
-#include "refcount_struct.h"
+#include "ref.h"
+#include "reference_counted.h"
 
 // Variable-sized class allocation. Allows to create a new instance of a class
 // together with an array in with single memory allocation.

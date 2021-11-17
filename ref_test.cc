@@ -18,7 +18,7 @@
 #include <memory>
 #include <string>
 
-#include "refcount_struct.h"
+#include "ref.h"
 
 namespace {
 

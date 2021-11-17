@@ -33,8 +33,7 @@
 #include <utility>
 
 #include "absl/types/variant.h"
-
-#include "refcount.h"
+#include "reference_counted.h"
 
 namespace refptr {
 
