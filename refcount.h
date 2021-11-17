@@ -81,7 +81,10 @@ template <typename T, class Deleter = DefaultRefDeleter<T>>
 struct Refcounted : private Deleter {
   static_assert(std::is_copy_constructible<Deleter>::value ||
                 std::is_move_constructible<Deleter>::value);
+#if __cplusplus >= 201402L
   static_assert(!std::is_final<Deleter>::value);
+#endif  // __cplusplus >= 201703L
+
 
  public:
   template <typename... Arg>
