@@ -30,4 +30,16 @@ int main() {
   assert(*cow == "Lorem ipsum dolor sit amet");
   assert(!cow->empty());  // Test operator->.
   assert(cow.as_mutable() == "Lorem ipsum dolor sit amet");
+  // Move and copy.
+  CopyOnWrite<std::string> cow2 = std::move(cow);
+  CopyOnWrite<std::string> cow3 = cow2;
+  assert(cow2);
+  assert(*cow2 == "Lorem ipsum dolor sit amet");
+  assert(!cow2->empty());  // Test operator->.
+  assert(cow2.as_mutable() == "Lorem ipsum dolor sit amet");
+  // Copied.
+  assert(cow3);
+  assert(*cow3 == "Lorem ipsum dolor sit amet");
+  assert(!cow3->empty());  // Test operator->.
+  assert(cow3.as_mutable() == "Lorem ipsum dolor sit amet");
 }

@@ -44,7 +44,7 @@ class CopyOnWrite {
   }
   CopyOnWrite& operator=(const CopyOnWrite& that) {
     Release(that.refcounted_);
-    refcounted_.Inc();
+    refcounted_->Inc();
     return *this;
   }
 
