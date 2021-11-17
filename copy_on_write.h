@@ -32,7 +32,7 @@ namespace refptr {
 // exposed externally (unless external callers are aware of this behavior).
 template <typename T>
 class CopyOnWrite {
-  static_assert(std::is_copy_constructible<T>::value);
+  static_assert(std::is_copy_constructible<T>::value, "T must be copy-constructible");
 
  public:
   template <typename... Arg>
