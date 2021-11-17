@@ -71,12 +71,18 @@ struct DefaultRefDeleter;
 
 // Keeps a `Refcount`-ed instance of `T`.
 //
-// `Deleter` must be a copyable or moveable type with method
-// `Delete(Refcounted<T, Deleter>*)` and must not be `final`.
+// `Deleter` is more complex than standard C++ deleters, because it needs to
+// achieve deletion of a structure which it is a part of. It must be a copyable
+// or moveable type, not `final`, callable with argument
+// `Refcounted<T, Deleter>*` (with arbitrary return type).
+//
 // `Refcounted` internally derives from `Deleter` to achieve empty base
-// optimization <https://en.cppreference.com/w/cpp/language/ebo>. When a caller
-// requests its deletion via `SelfDelete`, `Deleter` is moved or copied out and
-// then invoked on `this`.
+// optimization for the case of the default deleter which doesn't need to carry
+// any information <https://en.cppreference.com/w/cpp/language/ebo>.
+//
+// When a caller requests deletion of an instance via `SelfDelete`, `Deleter`
+// is moved or copied out to a local variable and then invoked on `this` to
+// destroy and free it.
 template <typename T, class Deleter = DefaultRefDeleter<T>>
 struct Refcounted : private Deleter {
   static_assert(std::is_copy_constructible<Deleter>::value ||
@@ -98,16 +104,18 @@ struct Refcounted : private Deleter {
     // Move/copy out the deleter to a local variable so that `this` can be
     // destroyed.
     Deleter deleter = std::move(*this);
-    (void)deleter.Delete(this);
+    (void)deleter(this);
   }
 
   mutable Refcount refcount;
   T nested;
 };
 
+// The default deleter usable with `Refcounted` that calls `delete` on the
+// pointer argument.
 template <typename T>
 struct DefaultRefDeleter {
-  void Delete(Refcounted<T, DefaultRefDeleter<T>>* to_delete) {
+  void operator()(Refcounted<T, DefaultRefDeleter<T>>* to_delete) {
     delete to_delete;
   }
 };

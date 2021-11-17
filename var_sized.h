@@ -163,7 +163,7 @@ class VarRefDeleter {
       : length(std::move(placement).Release()) {}
 
   // Runs the destructor of `*to_delete` and deallocates its `VarAllocation`.
-  void Delete(RefType *to_delete) {
+  void operator()(RefType *to_delete) {
     VarAllocation<RefType, A> placement(to_delete, length);
     to_delete->~RefType();
   }
