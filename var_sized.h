@@ -115,8 +115,8 @@ class VarAllocation {
   VarAllocation(T *ptr, Deleter &&deleter);
 
   constexpr size_t AllocatedUnits() {
-    return (sizeof(Placeholder) + (Size() - 1) * sizeof(A) + sizeof(A) - 1) /
-           sizeof(A);
+    return (sizeof(Placeholder) + (Size() - 1) * sizeof(A) + sizeof(Unit) - 1) /
+           sizeof(Unit);
   }
 
   Placeholder *AsPlaceholder() const {
