@@ -72,9 +72,10 @@ struct DefaultRefDeleter;
 // Keeps a `Refcount`-ed instance of `T`.
 //
 // `Deleter` is more complex than standard C++ deleters, because it needs to
-// achieve deletion of a structure which it is a part of. It must be a copyable
-// or moveable type, not `final`, callable with argument
-// `Refcounted<T, Deleter>*` (with arbitrary return type).
+// achieve deletion of a structure which it is a part of - this is necessary
+// for the case of variable-sized classes. It must be a copyable or moveable
+// type, not `final`, callable with argument `Refcounted<T, Deleter>*` (with
+// arbitrary return type).
 //
 // `Refcounted` internally derives from `Deleter` to achieve empty base
 // optimization for the case of the default deleter which doesn't need to carry

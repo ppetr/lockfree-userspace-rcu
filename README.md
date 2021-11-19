@@ -42,4 +42,15 @@ Please see [Code of Conduct](docs/code-of-conduct.md) and [Contributing](docs/co
 Ideas for contributions:
 
 - Refactor and improve tests with https://github.com/google/googletest.
-- Allow arbitrary C++ [allocators](https://en.cppreference.com/w/cpp/named_req/Allocator).
+- Add benchmarks with https://github.com/google/benchmark. In particular:
+  - Test the creation and manipulation speed of `Ref<T>` vs
+    `std::unique_ptr<T>` and `Ref<const T>` vs `std::shared_ptr<T>`.
+  - Test the allocation speed of variable-sized classes vs a regular class and
+    a separately allocated array.
+- Allow arbitrary C++
+  [allocators](https://en.cppreference.com/w/cpp/named_req/Allocator).
+- Make sure the first type parameter for `Ref` is sane. In particular it
+  doesn't make sense for it to be a reference.
+- Improve documentation where needed. This project should ideally have also
+  some didactical value.
+- Popularize the project to be useful to others too.
