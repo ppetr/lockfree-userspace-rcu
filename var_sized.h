@@ -63,11 +63,6 @@ class VarAllocation {
     static_assert(std::is_trivial<Placeholder>::value,
                   "Internal error: Placeholder class must be trivial");
   }
-  // Creates a placement from its building blocks.
-  //
-  // - `ptr` must be a pointer previously obtained from `VarAllocation::Node`.
-  // - `size` must be a value previously obtained from `VarAllocation::Release`.
-  VarAllocation(T *ptr, size_t size);
   VarAllocation(VarAllocation const &) = delete;
   VarAllocation(VarAllocation &&other) {
     allocation_ = other.allocation_;
@@ -90,12 +85,6 @@ class VarAllocation {
   A *Array() const { return reinterpret_cast<A *>(&AsPlaceholder()->array); }
 
   size_t Size() const { return size_; }
-  // Returns the `Size()` and releases ownership of `Node()`.
-  // This is used by self-owned classes for which `placement.Node() == this`.
-  size_t Release() && {
-    allocation_ = nullptr;
-    return size_;
-  }
 
   // Constructs a deleter for this particular `VarAllocation`.
   // If used with a different instance, the behaivor is undefined.
@@ -117,6 +106,12 @@ class VarAllocation {
   struct Unit {
     typename std::aligned_storage<1, alignof(Placeholder)>::type _;
   };
+
+  // Creates a placement from its building blocks.
+  //
+  // - `ptr` must be a pointer previously obtained from `VarAllocation::Node`.
+  // - `size` must be a value previously obtained from `VarAllocation::Release`.
+  VarAllocation(T *ptr, size_t size);
 
   constexpr size_t AllocatedUnits() {
     return (sizeof(Placeholder) + (size_ - 1) * sizeof(A) + sizeof(A) - 1) /
@@ -160,16 +155,13 @@ class VarRefDeleter {
 
   // Takes ownership of a `VarAllocation` to be deleted by `Delete`.
   VarRefDeleter(VarAllocation<RefType, A> &&placement)
-      : length(std::move(placement).Release()) {}
+      : deleter_(std::move(placement).ToDeleter()) {}
 
   // Runs the destructor of `*to_delete` and deallocates its `VarAllocation`.
-  void operator()(RefType *to_delete) {
-    VarAllocation<RefType, A> placement(to_delete, length);
-    to_delete->~RefType();
-  }
+  void operator()(RefType *to_delete) { deleter_(to_delete); }
 
  private:
-  size_t length;
+  typename VarAllocation<RefType, A>::Deleter deleter_;
 };
 
 // Similar to `MakeUnique` above, also with a single memory allocation, with
