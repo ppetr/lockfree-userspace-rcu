@@ -49,8 +49,6 @@ Ideas for contributions:
     a separately allocated array.
 - Allow arbitrary C++
   [allocators](https://en.cppreference.com/w/cpp/named_req/Allocator).
-- Make sure the first type parameter for `Ref` is sane. In particular it
-  doesn't make sense for it to be a reference.
 - Improve documentation where needed. This project should ideally have also
   some didactical value.
 - Popularize the project to be useful to others too.

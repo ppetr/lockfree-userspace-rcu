@@ -160,6 +160,10 @@ template <typename T,
 class Ref final
     : public internal::RefBase<typename std::remove_const<T>::type, Deleter,
                                internal::BaseOwnershipTraits<T>::traits> {
+  static_assert(
+      std::is_object<T>::value,
+      "The contained type T must a regular or const-qualified object");
+
  private:
   using Base = internal::RefBase<typename std::remove_const<T>::type, Deleter,
                                  internal::BaseOwnershipTraits<T>::traits>;

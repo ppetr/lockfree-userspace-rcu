@@ -89,6 +89,7 @@ struct Refcounted : private Deleter {
   static_assert(std::is_copy_constructible<Deleter>::value ||
                     std::is_move_constructible<Deleter>::value,
                 "The Deleter must be copy-constructible or move-constructible");
+  static_assert(std::is_class<Deleter>::value, "The Deleter must be a `class`");
 #if __cplusplus >= 201402L
   static_assert(!std::is_final<Deleter>::value,
                 "The Deleter must not be `final`");
