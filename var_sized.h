@@ -103,9 +103,7 @@ class VarAllocation {
   // Properly aligned unit used for the actual allocation.
   // It can occupy more than 1 byte, therefore we need to properly compute
   // their required number below.
-  struct Unit {
-    typename std::aligned_storage<1, alignof(Placeholder)>::type _;
-  };
+  using Unit = typename std::aligned_storage<1, alignof(Placeholder)>::type;
 
   // Creates a placement from its building blocks.
   //
