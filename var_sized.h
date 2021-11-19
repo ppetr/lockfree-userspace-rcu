@@ -43,7 +43,7 @@ class VarAllocation {
                   "The array type must be primitive or trivially destructible");
 
     void operator()(T *to_delete) {
-      VarAllocation<T, A> deleter(to_delete, size_);
+      VarAllocation<T, A> deleter(to_delete, std::move(*this));
       deleter.Node()->~T();
     }
 
@@ -58,7 +58,7 @@ class VarAllocation {
   // Allocates memory for a properly aligned instance of `T`, plus additional
   // array of `size` elements of `A`.
   explicit VarAllocation(size_t size)
-      : size_(size),
+      : deleter_(size),
         allocation_(std::allocator<Unit>().allocate(AllocatedUnits())) {
     static_assert(std::is_trivial<Placeholder>::value,
                   "Internal error: Placeholder class must be trivial");
@@ -66,8 +66,8 @@ class VarAllocation {
   VarAllocation(VarAllocation const &) = delete;
   VarAllocation(VarAllocation &&other) {
     allocation_ = other.allocation_;
-    size_ = other.size_;
     other.allocation_ = nullptr;
+    deleter_ = std::move(other.deleter_);
   }
 
   ~VarAllocation() {
@@ -84,13 +84,13 @@ class VarAllocation {
   // holding `size` (specified in the constructor) elements of `A`.
   A *Array() const { return reinterpret_cast<A *>(&AsPlaceholder()->array); }
 
-  size_t Size() const { return size_; }
+  size_t Size() const { return deleter_.size_; }
 
   // Constructs a deleter for this particular `VarAllocation`.
   // If used with a different instance, the behaivor is undefined.
   Deleter ToDeleter() && {
     allocation_ = nullptr;
-    return Deleter(size_);
+    return std::move(deleter_);
   }
 
  private:
@@ -110,11 +110,12 @@ class VarAllocation {
   // Creates a placement from its building blocks.
   //
   // - `ptr` must be a pointer previously obtained from `VarAllocation::Node`.
-  // - `size` must be a value previously obtained from `VarAllocation::Release`.
-  VarAllocation(T *ptr, size_t size);
+  // - `deleter` must be a value previously obtained by
+  //   `VarAllocation::ToDeleter`.
+  VarAllocation(T *ptr, Deleter &&deleter);
 
   constexpr size_t AllocatedUnits() {
-    return (sizeof(Placeholder) + (size_ - 1) * sizeof(A) + sizeof(A) - 1) /
+    return (sizeof(Placeholder) + (Size() - 1) * sizeof(A) + sizeof(A) - 1) /
            sizeof(A);
   }
 
@@ -122,13 +123,13 @@ class VarAllocation {
     return static_cast<Placeholder *>(allocation_);
   }
 
-  size_t size_;
+  Deleter deleter_;
   void *allocation_;
 };
 
 template <typename T, typename A>
-VarAllocation<T, A>::VarAllocation(T *ptr, size_t size)
-    : size_(size),
+VarAllocation<T, A>::VarAllocation(T *ptr, Deleter &&deleter)
+    : deleter_(std::move(deleter)),
       allocation_(reinterpret_cast<char *>(ptr) - offsetof(Placeholder, node)) {
 }
 
