@@ -18,6 +18,7 @@ enable_testing()
 
 set(CMAKE_CXX_STANDARD 11)
 set(BENCHMARK_ENABLE_TESTING OFF)
+set(BENCHMARK_ENABLE_GTEST_TESTS OFF)
 set(ABSL_PROPAGATE_CXX_STD ON)
 
 project(refcounted-var-sized CXX)
