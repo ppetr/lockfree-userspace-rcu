@@ -35,6 +35,15 @@ instance of `T` on the heap. Copying `CopyOnWrite<T>` is as cheap as copying a
 pointer, since copies are allowed to share a single instance. An actual copy of
 `T` is performed only when a mutable reference `T&` is requested.
 
+## Dependencies
+
+- `cmake` (https://cmake.org/).
+
+Libraries included as git submodules:
+
+- https://github.com/abseil/abseil-cpp
+- https://github.com/google/benchmark
+
 ## Contributions
 
 Please see [Code of Conduct](docs/code-of-conduct.md) and [Contributing](docs/contributing.md).
