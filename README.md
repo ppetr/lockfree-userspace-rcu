@@ -38,11 +38,12 @@ pointer, since copies are allowed to share a single instance. An actual copy of
 ## Dependencies
 
 - `cmake` (https://cmake.org/).
+- https://github.com/abseil/abseil-cpp (Git submodule)
 
-Libraries included as git submodules:
+Testing dependencies:
 
-- https://github.com/abseil/abseil-cpp
-- https://github.com/google/benchmark
+- https://github.com/google/benchmark (Git submodule)
+- https://github.com/google/googletest (Git submodule)
 
 ## Contributions
 

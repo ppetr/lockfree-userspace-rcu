@@ -20,54 +20,70 @@
 #include <memory>
 #include <string>
 
+#include "absl/strings/string_view.h"
+#include "gtest/gtest.h"
+
+namespace refptr {
 namespace {
 
-class Foo {
+// Copies `source` to `target` and returns `target` as an `absl::string_view`.
+absl::string_view CopyTo(const char* source, char* target, size_t target_size) {
+  strncpy(target, source, target_size);
+  target[target_size - 1] = '\0';
+  return absl::string_view(target);
+}
+
+struct Foo {
  public:
-  Foo(char* buf, size_t len, int& counter, const char* text)
-      : counter_(counter), buf_(buf) {
-    strncpy(buf, text, len);
-    buf[len - 1] = '\0';
+  Foo(char* buffer, size_t buffer_size, int& counter, const char* source)
+      : counter_(counter), buffer(CopyTo(source, buffer, buffer_size)) {
     counter_++;
   }
-  virtual ~Foo() {
-    counter_--;
-    std::cout << "Destructor called" << std::endl;
-  }
+  ~Foo() { counter_--; }
 
-  const char* text() const { return buf_; }
-
- private:
   int& counter_;
-  const char* buf_;
+  const absl::string_view buffer;
 };
 
-}  // namespace
+class VarSizedTest : public testing::Test {
+ protected:
+  VarSizedTest() : counter_(0) {}
 
-int main() {
-  using refptr::MakeRefCounted;
-  using refptr::MakeUnique;
+  void TearDown() override { EXPECT_EQ(counter_, 0); }
 
-  int counter = 0;
-  {
-    auto owned = MakeUnique<Foo, char, int&, const char*>(
-        16, counter, "Lorem ipsum dolor sit amet");
-    assert(counter == 1);
-    std::cout << owned->text() << std::endl;
-    std::shared_ptr<Foo> shared(std::move(owned));
-    assert(!owned);
-    assert(counter == 1);
-    std::cout << shared->text() << std::endl;
-  }
-  assert(counter == 0);
-  {
-    auto owned = MakeRefCounted<Foo, char, int&, const char*>(
-        16, counter, "Lorem ipsum dolor sit amet");
-    assert(counter == 1);
-    std::cout << owned->text() << std::endl;
-    auto shared = std::move(owned).Share();
-    assert(counter == 1);
-    std::cout << shared->text() << std::endl;
-  }
-  assert(counter == 0);
+  int counter_;
+};
+
+TEST_F(VarSizedTest, MakeUniqueWorks) {
+  auto owned = MakeUnique<Foo, char, int&, const char*>(
+      16, counter_, "Lorem ipsum dolor sit amet");
+  EXPECT_EQ(counter_, 1);
+  EXPECT_EQ(absl::string_view(owned->buffer), "Lorem ipsum dol");
 }
+
+TEST_F(VarSizedTest, UniqueConvertsToSharedPtr) {
+  auto owned = MakeUnique<Foo, char, int&, const char*>(
+      16, counter_, "Lorem ipsum dolor sit amet");
+  std::shared_ptr<Foo> shared(std::move(owned));
+  ASSERT_FALSE(owned);
+  EXPECT_EQ(counter_, 1);
+  EXPECT_EQ(shared->buffer, "Lorem ipsum dol");
+}
+
+TEST_F(VarSizedTest, MakeRefCountedWorks) {
+  auto owned = MakeRefCounted<Foo, char, int&, const char*>(
+      16, counter_, "Lorem ipsum dolor sit amet");
+  EXPECT_EQ(counter_, 1);
+  EXPECT_EQ(absl::string_view(owned->buffer), "Lorem ipsum dol");
+}
+
+TEST_F(VarSizedTest, RefCountedConvertsToShared) {
+  auto owned = MakeRefCounted<Foo, char, int&, const char*>(
+      16, counter_, "Lorem ipsum dolor sit amet");
+  auto shared = std::move(owned).Share();
+  EXPECT_EQ(counter_, 1);
+  EXPECT_EQ(shared->buffer, "Lorem ipsum dol");
+}
+
+}  // namespace
+}  // namespace refptr

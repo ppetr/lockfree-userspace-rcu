@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.11)
 
 enable_testing()
 
@@ -28,6 +28,8 @@ add_subdirectory(abseil-cpp)
 set(BENCHMARK_ENABLE_TESTING OFF)
 add_subdirectory(benchmark EXCLUDE_FROM_ALL)
 
+add_subdirectory(googletest EXCLUDE_FROM_ALL)
+
 # Var-sized and ref-counted structures.
 
 add_library(var_sized INTERFACE)
@@ -35,7 +37,7 @@ target_include_directories(var_sized INTERFACE .)
 target_link_libraries(var_sized INTERFACE absl::variant)
 
 add_executable(var_sized_test var_sized_test.cc)
-target_link_libraries(var_sized_test var_sized absl::variant)
+target_link_libraries(var_sized_test var_sized absl::strings absl::variant gtest_main)
 add_test(NAME var_sized_test COMMAND var_sized_test)
 
 add_executable(var_sized_benchmark var_sized_benchmark.cc)
