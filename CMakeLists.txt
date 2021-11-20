@@ -19,13 +19,13 @@ enable_testing()
 project(refcounted-var-sized CXX)
 
 set(CMAKE_CXX_STANDARD 11)
-set(BENCHMARK_ENABLE_GTEST_TESTS OFF)
 
 add_subdirectory(abseil-cpp)
 
 # For the benchmarks below be sure to enable optimizations, for example:
 #   cmake -DBENCHMARK_ENABLE_LTO=true -DCMAKE_BUILD_TYPE=Release
 # See https://github.com/google/benchmark#debug-vs-release.
+set(BENCHMARK_ENABLE_TESTING OFF)
 add_subdirectory(benchmark EXCLUDE_FROM_ALL)
 
 # Var-sized and ref-counted structures.
