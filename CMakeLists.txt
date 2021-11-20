@@ -16,19 +16,20 @@ cmake_minimum_required(VERSION 3.11)
 
 enable_testing()
 
+set(CMAKE_CXX_STANDARD 11)
+set(BENCHMARK_ENABLE_TESTING OFF)
+set(ABSL_PROPAGATE_CXX_STD ON)
+
 project(refcounted-var-sized CXX)
 
-set(CMAKE_CXX_STANDARD 11)
-
 add_subdirectory(abseil-cpp)
+
+add_subdirectory(googletest EXCLUDE_FROM_ALL)
 
 # For the benchmarks below be sure to enable optimizations, for example:
 #   cmake -DBENCHMARK_ENABLE_LTO=true -DCMAKE_BUILD_TYPE=Release
 # See https://github.com/google/benchmark#debug-vs-release.
-set(BENCHMARK_ENABLE_TESTING OFF)
 add_subdirectory(benchmark EXCLUDE_FROM_ALL)
-
-add_subdirectory(googletest EXCLUDE_FROM_ALL)
 
 # Var-sized and ref-counted structures.
 
