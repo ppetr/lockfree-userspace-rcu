@@ -14,32 +14,45 @@
 
 #include "copy_on_write.h"
 
-#include <cassert>
-#include <iostream>
 #include <string>
-#include <utility>
 
+#include "absl/strings/string_view.h"
 #include "absl/utility/utility.h"
+#include "gtest/gtest.h"
 
-int main() {
-  using refptr::CopyOnWrite;
+namespace refptr {
+namespace {
 
-  CopyOnWrite<std::string> cow(absl::in_place, "Lorem ipsum dolor sit amet");
-  std::cout << *cow << std::endl;
-  assert(cow);
-  assert(*cow == "Lorem ipsum dolor sit amet");
-  assert(!cow->empty());  // Test operator->.
-  assert(cow.as_mutable() == "Lorem ipsum dolor sit amet");
-  // Move and copy.
-  CopyOnWrite<std::string> cow2 = std::move(cow);
-  CopyOnWrite<std::string> cow3 = cow2;
-  assert(cow2);
-  assert(*cow2 == "Lorem ipsum dolor sit amet");
-  assert(!cow2->empty());  // Test operator->.
-  assert(cow2.as_mutable() == "Lorem ipsum dolor sit amet");
-  // Copied.
-  assert(cow3);
-  assert(*cow3 == "Lorem ipsum dolor sit amet");
-  assert(!cow3->empty());  // Test operator->.
-  assert(cow3.as_mutable() == "Lorem ipsum dolor sit amet");
+constexpr absl::string_view kText = "Lorem ipsum dolor sit amet";
+
+TEST(CopyOnWriteTest, ConstructsInPlace) {
+  CopyOnWrite<std::string> cow(absl::in_place, kText);
+  ASSERT_TRUE(cow);
+  EXPECT_EQ(*cow, kText);
+  EXPECT_FALSE(cow->empty());  // Test operator->.
+  EXPECT_EQ(cow.as_mutable(), kText);
 }
+
+TEST(CopyOnWriteTest, Moves) {
+  CopyOnWrite<std::string> original(absl::in_place, kText);
+  CopyOnWrite<std::string> cow = std::move(original);
+  ASSERT_TRUE(cow);
+  EXPECT_EQ(*cow, kText);
+  EXPECT_EQ(cow.as_mutable(), kText);
+}
+
+TEST(CopyOnWriteTest, Copies) {
+  CopyOnWrite<std::string> original(absl::in_place, kText);
+  CopyOnWrite<std::string> cow = original;
+  // Original.
+  ASSERT_TRUE(original);
+  EXPECT_EQ(*original, kText);
+  EXPECT_EQ(original.as_mutable(), kText);
+  // Copy.
+  ASSERT_TRUE(cow);
+  EXPECT_EQ(*cow, kText);
+  EXPECT_EQ(cow.as_mutable(), kText);
+}
+
+}  // namespace
+}  // namespace refptr

@@ -51,7 +51,6 @@ Please see [Code of Conduct](docs/code-of-conduct.md) and [Contributing](docs/co
 
 Ideas for contributions:
 
-- Refactor and improve tests with https://github.com/google/googletest.
 - Add benchmarks with https://github.com/google/benchmark. In particular:
   - Test the creation and manipulation speed of `Ref<T>` vs
     `std::unique_ptr<T>` and `Ref<const T>` vs `std::shared_ptr<T>`.
