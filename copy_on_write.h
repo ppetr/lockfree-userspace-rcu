@@ -19,7 +19,7 @@
 #include <utility>
 
 #include "absl/utility/utility.h"
-#include "reference_counted.h"
+#include "ref.h"
 
 namespace refptr {
 
@@ -38,59 +38,27 @@ class CopyOnWrite {
  public:
   template <typename... Arg>
   explicit CopyOnWrite(absl::in_place_t, Arg&&... args)
-      : refcounted_(new Refcounted<T>(DefaultRefDeleter<T>(),
-                                      std::forward<Arg>(args)...)) {}
+      : ref_(New<T>(std::forward<Arg>(args)...).Share()) {}
 
-  CopyOnWrite(const CopyOnWrite& that) : refcounted_(that.refcounted_) {
-    refcounted_->refcount.Inc();
-  }
-  CopyOnWrite& operator=(const CopyOnWrite& that) {
-    Release(that.refcounted_);
-    refcounted_->Inc();
-    return *this;
-  }
-
-  CopyOnWrite(CopyOnWrite&& that) : refcounted_(that.refcounted_) {
-    that.refcounted_ = nullptr;
-  }
-  CopyOnWrite& operator=(CopyOnWrite&& that) {
-    Release(that.refcounted_);
-    that.refcounted_ = nullptr;
-    return *this;
-  }
-
-  static CopyOnWrite Null() { return CopyOnWrite(); }
-
-  ~CopyOnWrite() { Release(nullptr); }
-
-  operator bool() const { return refcounted_ != nullptr; }
+  CopyOnWrite(const CopyOnWrite& that) = default;
+  CopyOnWrite(CopyOnWrite&& that) = default;
+  CopyOnWrite& operator=(const CopyOnWrite&) = default;
+  CopyOnWrite& operator=(CopyOnWrite&& that) = default;
 
   T& as_mutable() {
-    if (!refcounted_->refcount.IsOne()) {
-      // There are multiple instances referencing `refcounted_`, therefore a
-      // copy must be made.
-      CopyOnWrite to_release(absl::in_place, refcounted_->nested);
-      std::swap(refcounted_, to_release.refcounted_);
-    }
-    return refcounted_->nested;
+    auto as_owned = std::move(ref_).AttemptToClaim();
+    Ref<T> owned = absl::holds_alternative<Ref<T>>(as_owned)
+                       ? absl::get<Ref<T>>(std::move(as_owned))
+                       : New<T>(*absl::get<Ref<const T>>(as_owned));
+    T& value = *owned;
+    ref_ = std::move(owned).Share();
+    return value;
   }
-  const T& operator*() const { return refcounted_->nested; }
+  const T& operator*() const { return *ref_; }
   const T* operator->() const { return &this->operator*(); }
 
  private:
-  CopyOnWrite() : refcounted_(nullptr) {}
-
-  // Releases `refcounted_` and replaces it with `refcounted`.
-  // The caller must ensure that `refcounted` has the appropriate incremented
-  // refcount.
-  void Release(Refcounted<T>* refcounted) {
-    if (refcounted_ != nullptr && refcounted_->refcount.Dec()) {
-      std::move(*refcounted_).SelfDelete();
-    }
-    refcounted_ = refcounted;
-  }
-
-  mutable Refcounted<T>* refcounted_;
+  Ref<const T> ref_;
 };
 
 }  // namespace refptr

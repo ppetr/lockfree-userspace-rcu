@@ -27,7 +27,6 @@ constexpr absl::string_view kText = "Lorem ipsum dolor sit amet";
 
 TEST(CopyOnWriteTest, ConstructsInPlace) {
   CopyOnWrite<std::string> cow(absl::in_place, kText);
-  ASSERT_TRUE(cow);
   EXPECT_EQ(*cow, kText);
   EXPECT_FALSE(cow->empty());  // Test operator->.
   EXPECT_EQ(cow.as_mutable(), kText);
@@ -36,7 +35,6 @@ TEST(CopyOnWriteTest, ConstructsInPlace) {
 TEST(CopyOnWriteTest, Moves) {
   CopyOnWrite<std::string> original(absl::in_place, kText);
   CopyOnWrite<std::string> cow = std::move(original);
-  ASSERT_TRUE(cow);
   EXPECT_EQ(*cow, kText);
   EXPECT_EQ(cow.as_mutable(), kText);
 }
@@ -45,11 +43,9 @@ TEST(CopyOnWriteTest, Copies) {
   CopyOnWrite<std::string> original(absl::in_place, kText);
   CopyOnWrite<std::string> cow = original;
   // Original.
-  ASSERT_TRUE(original);
   EXPECT_EQ(*original, kText);
   EXPECT_EQ(original.as_mutable(), kText);
   // Copy.
-  ASSERT_TRUE(cow);
   EXPECT_EQ(*cow, kText);
   EXPECT_EQ(cow.as_mutable(), kText);
 }

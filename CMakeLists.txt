@@ -60,7 +60,7 @@ add_test(NAME var_sized_benchmark COMMAND var_sized_benchmark)
 
 add_library(copy_on_write INTERFACE)
 target_include_directories(copy_on_write INTERFACE .)
-target_link_libraries(copy_on_write INTERFACE absl::utility)
+target_link_libraries(copy_on_write INTERFACE ref absl::utility)
 
 add_executable(copy_on_write_test copy_on_write_test.cc)
 target_link_libraries(copy_on_write_test copy_on_write absl::strings absl::utility gtest_main)
