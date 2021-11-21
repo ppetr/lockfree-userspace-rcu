@@ -84,8 +84,8 @@ class CopyOnWrite {
   // The caller must ensure that `refcounted` has the appropriate incremented
   // refcount.
   void Release(Refcounted<T>* refcounted) {
-    if (refcounted != nullptr && refcounted->refcount.Dec()) {
-      std::move(*refcounted).SelfDelete();
+    if (refcounted_ != nullptr && refcounted_->refcount.Dec()) {
+      std::move(*refcounted_).SelfDelete();
     }
     refcounted_ = refcounted;
   }
