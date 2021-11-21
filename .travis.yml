@@ -29,7 +29,8 @@ jobs:
     compiler: gcc
     env: CXXFLAGS=-std=c++2a
   include:
-    compiler: clang
-    env:
-      - CXXFLAGS="-fsanitize=address -static-libasan -fno-omit-frame-pointer -fuse-ld=lld -O1"
-      - RUN_HAVE_STD_REGEX=0
+    - name: Address Sanitizer
+      compiler: clang
+      env:
+        - CXXFLAGS="-fsanitize=address -static-libasan -fno-omit-frame-pointer -O1"
+        - RUN_HAVE_STD_REGEX=0
