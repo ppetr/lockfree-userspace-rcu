@@ -47,7 +47,7 @@ target_link_libraries(var_sized_benchmark var_sized benchmark::benchmark_main)
 add_test(NAME var_sized_benchmark COMMAND var_sized_benchmark)
 
 add_executable(ref_test ref_test.cc)
-target_link_libraries(ref_test var_sized absl::variant)
+target_link_libraries(ref_test var_sized absl::variant gtest_main)
 add_test(NAME ref_test COMMAND ref_test)
 
 # Copy on Write.

@@ -14,11 +14,8 @@
 
 #include "var_sized.h"
 
-#include <cassert>
 #include <cstring>
-#include <iostream>
 #include <memory>
-#include <string>
 
 #include "absl/strings/string_view.h"
 #include "gtest/gtest.h"
@@ -39,7 +36,8 @@ struct Foo {
       : counter_(counter), buffer(CopyTo(source, buffer, buffer_size)) {
     counter_++;
   }
-  ~Foo() { counter_--; }
+  // The constructor is intentionally virtual to make the class non-trivial.
+  virtual ~Foo() { counter_--; }
 
   int& counter_;
   const absl::string_view buffer;

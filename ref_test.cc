@@ -12,67 +12,67 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <cassert>
-#include <cstring>
-#include <iostream>
-#include <memory>
-#include <string>
-
 #include "ref.h"
 
+#include "gtest/gtest.h"
+
+namespace refptr {
 namespace {
 
-class Foo {
+struct Foo {
  public:
-  Foo(int& counter, const char* text) : counter_(counter), buf_(text) {
+  Foo(int& counter, int value) : counter_(counter), value_(value) {
     counter_++;
   }
-  Foo(char* buf, size_t len, int& counter, const char* text)
-      : counter_(counter), buf_(buf) {
-    strncpy(buf, text, len);
-    buf[len - 1] = '\0';
-    counter_++;
-  }
-  virtual ~Foo() {
-    counter_--;
-    std::cout << "Destructor called" << std::endl;
-  }
+  // The constructor is intentionally virtual to make the class non-trivial.
+  virtual ~Foo() { counter_--; }
 
-  const char* text() const { return buf_; }
-
- private:
   int& counter_;
-  const char* buf_;
+  int value_;
 };
 
-class Bar {
-  refptr::Ref<Foo> bar1;
-  refptr::Ref<const Foo> bar2;
+class RefTest : public testing::Test {
+ protected:
+  RefTest() : counter_(0) {}
+
+  void TearDown() override { EXPECT_EQ(counter_, 0); }
+
+  int counter_;
 };
+
+TEST_F(RefTest, ConstructionAndAssignmentWorks) {
+  Ref<Foo> owned(New<Foo, int&, int>(counter_, 42));
+  EXPECT_EQ(counter_, 1);
+  EXPECT_EQ(owned->value_, 42);
+  Ref<Foo> other = std::move(owned);
+  EXPECT_EQ(counter_, 1);
+  EXPECT_EQ(other->value_, 42);
+}
+
+TEST_F(RefTest, Share) {
+  Ref<Foo> owned = New<Foo, int&, int>(counter_, 42);
+  Ref<const Foo> shared(std::move(owned).Share());
+  EXPECT_EQ(counter_, 1);
+  EXPECT_EQ(shared->value_, 42);
+}
+
+TEST_F(RefTest, AttemptToClaimSucceeds) {
+  Ref<const Foo> shared = New<Foo, int&, int>(counter_, 42).Share();
+  auto owned_var = std::move(shared).AttemptToClaim();
+  EXPECT_EQ(counter_, 1);
+  ASSERT_TRUE(absl::holds_alternative<Ref<Foo>>(owned_var));
+  EXPECT_EQ(absl::get<Ref<Foo>>(owned_var)->value_, 42);
+}
+
+TEST_F(RefTest, AttemptToClaimFails) {
+  Ref<const Foo> shared = New<Foo, int&, int>(counter_, 42).Share();
+  Ref<const Foo> shared2 = shared;
+  EXPECT_EQ(counter_, 1);
+  auto owned_var = std::move(shared).AttemptToClaim();
+  EXPECT_EQ(counter_, 1);
+  ASSERT_TRUE(absl::holds_alternative<Ref<const Foo>>(owned_var));
+  EXPECT_EQ(absl::get<Ref<const Foo>>(owned_var)->value_, 42);
+}
 
 }  // namespace
-
-int main() {
-  using refptr::New;
-  using refptr::Ref;
-
-  int counter = 0;
-  {
-    Ref<Foo> owned(
-        New<Foo, int&, const char*>(counter, "Lorem ipsum dolor sit amet"));
-    assert(counter == 1);
-    std::cout << owned->text() << std::endl;
-    Ref<Foo> owned2 = std::move(owned);
-    assert(counter == 1);
-    std::cout << owned2->text() << std::endl;
-    Ref<const Foo> shared(std::move(owned2).Share());
-    assert(counter == 1);
-    std::cout << shared->text() << std::endl;
-    auto owned_var = std::move(shared).AttemptToClaim();
-    assert(counter == 1);
-    assert(("Attempt to claim ownership failed", owned_var.index() == 0));
-    std::cout << absl::get<0>(owned_var)->text() << std::endl;
-  }
-  assert(counter == 0);
-  return 0;
-}
+}  // namespace refptr
