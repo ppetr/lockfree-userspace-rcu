@@ -17,6 +17,14 @@ env:
     - CXXFLAGS=-std=c++14
     - CXXFLAGS=-std=c++17
     - CXXFLAGS=-std=c++2a
+arch:
+  - amd64
+  - ppc64le
+  - s390x
+  - arm64
+os:
+  - linux
+  - osx
 jobs:
   exclude:
     compiler: gcc
