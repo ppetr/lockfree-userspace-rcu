@@ -109,11 +109,12 @@ class RefBase<T, Deleter, OwnershipTraits::unique> {
   RefBase(RefBase const &other) = delete;
   RefBase(RefBase &&other) : buffer_(other.buffer_) { other.buffer_ = nullptr; }
 
-  RefBase &operator=(RefBase const &other) {
+  RefBase &operator=(RefBase const &other) = delete;
+  RefBase &operator=(RefBase &&other) {
     Reset(other.buffer_);
+    other.buffer_ = nullptr;
     return *this;
   }
-  RefBase &operator=(RefBase &&other) = delete;
 
   ~RefBase() { Reset(nullptr); }
 
