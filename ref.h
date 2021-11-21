@@ -58,8 +58,10 @@ class RefBase;
 template <typename T, class Deleter>
 class RefBase<T, Deleter, OwnershipTraits::shared> {
  public:
-  RefBase(RefBase const &other) { Reset(other.buffer_); }
-  RefBase(RefBase &&other) : buffer_(other.buffer_) { other.buffer_ = nullptr; }
+  RefBase(RefBase const &other) : RefBase(other.buffer_) {
+    buffer_->refcount.Inc();
+  }
+  RefBase(RefBase &&other) : RefBase(other.buffer_) { other.buffer_ = nullptr; }
 
   RefBase &operator=(RefBase const &other) {
     assert(other.buffer_ != nullptr);
@@ -107,7 +109,7 @@ template <typename T, class Deleter>
 class RefBase<T, Deleter, OwnershipTraits::unique> {
  public:
   RefBase(RefBase const &other) = delete;
-  RefBase(RefBase &&other) : buffer_(other.buffer_) { other.buffer_ = nullptr; }
+  RefBase(RefBase &&other) : RefBase(other.buffer_) { other.buffer_ = nullptr; }
 
   RefBase &operator=(RefBase const &other) = delete;
   RefBase &operator=(RefBase &&other) {

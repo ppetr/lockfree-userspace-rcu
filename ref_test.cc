@@ -56,6 +56,15 @@ TEST_F(RefTest, Share) {
   EXPECT_EQ(shared->value_, 42);
 }
 
+TEST_F(RefTest, ShareTwice) {
+  Ref<Foo> owned = New<Foo, int&, int>(counter_, 42);
+  Ref<const Foo> shared(std::move(owned).Share());
+  Ref<const Foo> shared2(shared);
+  EXPECT_EQ(counter_, 1);
+  EXPECT_EQ(shared->value_, 42);
+  EXPECT_EQ(shared2->value_, 42);
+}
+
 TEST_F(RefTest, AttemptToClaimSucceeds) {
   Ref<const Foo> shared = New<Foo, int&, int>(counter_, 42).Share();
   auto owned_var = std::move(shared).AttemptToClaim();
