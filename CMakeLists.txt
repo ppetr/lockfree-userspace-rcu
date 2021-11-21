@@ -17,9 +17,11 @@ cmake_minimum_required(VERSION 3.11)
 enable_testing()
 
 set(CMAKE_CXX_STANDARD 11)
-set(BENCHMARK_ENABLE_TESTING OFF)
-set(BENCHMARK_ENABLE_GTEST_TESTS OFF)
-set(ABSL_PROPAGATE_CXX_STD ON)
+# Set variables for subdirectories.
+# See https://stackoverflow.com/a/3769269/1333025.
+set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL
+    "Disable Benchmark library tests")
+set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "")
 
 project(refcounted-var-sized CXX)
 
