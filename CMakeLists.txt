@@ -36,21 +36,25 @@ add_subdirectory(benchmark EXCLUDE_FROM_ALL)
 
 # Var-sized and ref-counted structures.
 
+add_library(ref INTERFACE)
+target_include_directories(ref INTERFACE .)
+target_link_libraries(ref INTERFACE absl::utility absl::variant)
+
+add_executable(ref_test ref_test.cc)
+target_link_libraries(ref_test absl::utility absl::variant gtest_main)
+add_test(NAME ref_test COMMAND ref_test)
+
 add_library(var_sized INTERFACE)
 target_include_directories(var_sized INTERFACE .)
-target_link_libraries(var_sized INTERFACE absl::variant)
+target_link_libraries(var_sized INTERFACE ref)
 
 add_executable(var_sized_test var_sized_test.cc)
-target_link_libraries(var_sized_test var_sized absl::strings absl::variant gtest_main)
+target_link_libraries(var_sized_test var_sized absl::strings gtest_main)
 add_test(NAME var_sized_test COMMAND var_sized_test)
 
 add_executable(var_sized_benchmark var_sized_benchmark.cc)
 target_link_libraries(var_sized_benchmark var_sized benchmark::benchmark_main)
 add_test(NAME var_sized_benchmark COMMAND var_sized_benchmark)
-
-add_executable(ref_test ref_test.cc)
-target_link_libraries(ref_test var_sized absl::variant gtest_main)
-add_test(NAME ref_test COMMAND ref_test)
 
 # Copy on Write.
 

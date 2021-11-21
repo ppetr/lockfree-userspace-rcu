@@ -33,6 +33,7 @@
 #include <utility>
 
 #include "absl/types/variant.h"
+#include "absl/utility/utility.h"
 #include "reference_counted.h"
 
 namespace refptr {
@@ -58,25 +59,23 @@ class RefBase;
 template <typename T, class Deleter>
 class RefBase<T, Deleter, OwnershipTraits::shared> {
  public:
-  RefBase(RefBase const &other) : RefBase(other.buffer_) {
-    buffer_->refcount.Inc();
-  }
-  RefBase(RefBase &&other) : RefBase(other.buffer_) { other.buffer_ = nullptr; }
+  RefBase(RefBase const &other) { (*this) = other; }
+  RefBase(RefBase &&other) { (*this) = std::move(other); }
 
-  RefBase &operator=(RefBase const &other) {
+  inline RefBase &operator=(RefBase const &other) {
     assert(other.buffer_ != nullptr);
-    Reset(other.buffer_);
+    Clear();
+    (buffer_ = other.buffer_)->refcount.Inc();
     return *this;
   }
-  RefBase &operator=(RefBase &&other) {
+  inline RefBase &operator=(RefBase &&other) {
     assert(other.buffer_ != nullptr);
-    Reset(nullptr);
-    buffer_ = other.buffer_;
-    other.buffer_ = nullptr;
+    Clear();
+    std::swap(buffer_, other.buffer_);
     return *this;
   }
 
-  ~RefBase() { Reset(nullptr); }
+  ~RefBase() { Clear(); }
 
   const T &operator*() const { return buffer_->nested; }
   const T *operator->() const { return &buffer_->nested; }
@@ -84,41 +83,42 @@ class RefBase<T, Deleter, OwnershipTraits::shared> {
   absl::variant<Ref<T, Deleter>, Ref<const T, Deleter>> AttemptToClaim() &&;
 
  protected:
+  constexpr RefBase() : buffer_(nullptr) {}
   constexpr explicit RefBase(const Refcounted<T, Deleter> *buffer)
       : buffer_(buffer) {}
 
-  inline void Reset(const Refcounted<T, Deleter> *buffer) {
+  // Deletes the instance pointed to `buffer_` and clears the variable.
+  inline void Clear() {
     if ((buffer_ != nullptr) && buffer_->refcount.Dec()) {
-      const_cast<Refcounted<T, Deleter> &&>(std::move(*buffer_)).SelfDelete();
-    }
-    if ((buffer_ = buffer) != nullptr) {
-      buffer_->refcount.Inc();
+      std::move(*const_cast<Refcounted<T, Deleter> *>(buffer_)).SelfDelete();
+      buffer_ = nullptr;
     }
   }
 
-  Refcounted<T, Deleter> *move_buffer() && {
-    auto *buffer = buffer_;
-    buffer_ = nullptr;
-    return const_cast<Refcounted<T, Deleter> *>(buffer);
+  // Clears `buffer_` and returns the original value.
+  inline Refcounted<T, Deleter> *move_buffer() && {
+    return const_cast<Refcounted<T, Deleter> *>(
+        absl::exchange(buffer_, nullptr));
   }
 
-  const Refcounted<T, Deleter> *buffer_;
+  const Refcounted<T, Deleter> *buffer_ = nullptr;
 };
 
 template <typename T, class Deleter>
 class RefBase<T, Deleter, OwnershipTraits::unique> {
  public:
   RefBase(RefBase const &other) = delete;
-  RefBase(RefBase &&other) : RefBase(other.buffer_) { other.buffer_ = nullptr; }
+  RefBase(RefBase &&other) { (*this) = std::move(other); }
 
   RefBase &operator=(RefBase const &other) = delete;
-  RefBase &operator=(RefBase &&other) {
-    Reset(other.buffer_);
-    other.buffer_ = nullptr;
+  inline RefBase &operator=(RefBase &&other) {
+    assert(other.buffer_ != nullptr);
+    Clear();
+    std::swap(buffer_, other.buffer_);
     return *this;
   }
 
-  ~RefBase() { Reset(nullptr); }
+  ~RefBase() { Clear(); }
 
   T &operator*() { return buffer_->nested; }
   T *operator->() { return &buffer_->nested; }
@@ -129,21 +129,21 @@ class RefBase<T, Deleter, OwnershipTraits::unique> {
   constexpr explicit RefBase(Refcounted<T, Deleter> *buffer)
       : buffer_(buffer) {}
 
-  inline void Reset(Refcounted<T, Deleter> *buffer) {
+  // Clears `buffer_`, deleting it if the refcount decrements to 0.
+  inline void Clear() {
     if (buffer_ != nullptr) {
       assert(buffer_->refcount.IsOne());
       std::move(*buffer_).SelfDelete();
+      buffer_ = nullptr;
     }
-    buffer_ = buffer;
   }
 
-  Refcounted<T, Deleter> *move_buffer() && {
-    auto *buffer = buffer_;
-    buffer_ = nullptr;
-    return buffer;
+  // Clears `buffer_` and returns the original value.
+  inline Refcounted<T, Deleter> *move_buffer() && {
+    return absl::exchange(buffer_, nullptr);
   }
 
-  Refcounted<T, Deleter> *buffer_;
+  Refcounted<T, Deleter> *buffer_ = nullptr;
 };
 
 }  // namespace internal
