@@ -10,12 +10,13 @@ compiler:
   - clang
   - gcc
 env:
-  - CXXFLAGS=-std=c++11
-  - CXXFLAGS=-std=c++14
-  - CXXFLAGS=-std=c++17
-  - CXXFLAGS=-std=c++2a
   global:
-  - CTEST_OUTPUT_ON_FAILURE=1
+    - CTEST_OUTPUT_ON_FAILURE=1
+  jobs:
+    - CXXFLAGS=-std=c++11
+    - CXXFLAGS=-std=c++14
+    - CXXFLAGS=-std=c++17
+    - CXXFLAGS=-std=c++2a
 jobs:
   exclude:
     compiler: gcc
