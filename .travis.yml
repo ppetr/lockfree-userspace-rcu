@@ -20,7 +20,6 @@ env:
 arch:
   - amd64
   - ppc64le
-  - arm64
 os:
   - linux
   - osx
