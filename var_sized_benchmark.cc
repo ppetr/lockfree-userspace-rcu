@@ -12,6 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Benchmarks comparing var-sized, reference-counted data structures to
+// unique/shared pointers.
+//
+// Results ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Raspberry Pi 4, g++, compiled with
+//   -DBENCHMARK_ENABLE_LTO=true -DCMAKE_BUILD_TYPE=Release)
+//
+// Run on (4 X 1500 MHz CPU s)
+// Load Average: 0.03, 1.68, 1.49
+// -------------------------------------------------------------------
+// Benchmark                         Time             CPU   Iterations
+// -------------------------------------------------------------------
+// BM_VarSizedString              6894 ns         6888 ns        98832
+// BM_UniqueAllocatedString      14329 ns        14319 ns        48074
+// BM_SharedAllocatedString      24128 ns        24113 ns        29026
+
 #include "var_sized.h"
 
 #include <cassert>
@@ -64,7 +80,7 @@ static void BM_VarSizedString(benchmark::State& state) {
 }
 BENCHMARK(BM_VarSizedString);
 
-static void BM_AllocatedString(benchmark::State& state) {
+static void BM_UniqueAllocatedString(benchmark::State& state) {
   for (auto _ : state) {
     for (int i = 0; i < 100; i++) {
       (void)std::unique_ptr<AllocatedString>(
@@ -72,4 +88,14 @@ static void BM_AllocatedString(benchmark::State& state) {
     }
   }
 }
-BENCHMARK(BM_AllocatedString);
+BENCHMARK(BM_UniqueAllocatedString);
+
+static void BM_SharedAllocatedString(benchmark::State& state) {
+  for (auto _ : state) {
+    for (int i = 0; i < 100; i++) {
+      (void)std::shared_ptr<AllocatedString>(
+          new AllocatedString(16, "Lorem ipsum dolor sit amet"));
+    }
+  }
+}
+BENCHMARK(BM_SharedAllocatedString);
