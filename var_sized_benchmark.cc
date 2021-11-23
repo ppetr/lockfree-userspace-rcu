@@ -20,13 +20,14 @@
 //   -DBENCHMARK_ENABLE_LTO=true -DCMAKE_BUILD_TYPE=Release)
 //
 // Run on (4 X 1500 MHz CPU s)
-// Load Average: 0.03, 1.68, 1.49
-// -------------------------------------------------------------------
-// Benchmark                         Time             CPU   Iterations
-// -------------------------------------------------------------------
-// BM_VarSizedString              6894 ns         6888 ns        98832
-// BM_UniqueAllocatedString      14329 ns        14319 ns        48074
-// BM_SharedAllocatedString      24128 ns        24113 ns        29026
+// Load Average: 0.17, 0.05, 0.01
+// -----------------------------------------------------------------------
+// Benchmark                             Time             CPU   Iterations
+// -----------------------------------------------------------------------
+// BM_VarSizedString                  7176 ns         7159 ns        97705
+// BM_UniqueAllocatedString          14833 ns        14800 ns        44468
+// BM_SharedNewAllocatedString       24308 ns        24257 ns        28854
+// BM_MakeSharedAllocatedString      17881 ns        17842 ns        39201
 
 #include "var_sized.h"
 
@@ -80,17 +81,18 @@ static void BM_VarSizedString(benchmark::State& state) {
 }
 BENCHMARK(BM_VarSizedString);
 
-static void BM_UniqueAllocatedString(benchmark::State& state) {
+static void BM_MakeUniqueAllocatedString(benchmark::State& state) {
   for (auto _ : state) {
     for (int i = 0; i < 100; i++) {
-      (void)std::unique_ptr<AllocatedString>(
-          new AllocatedString(16, "Lorem ipsum dolor sit amet"));
+      (void)std::make_unique<AllocatedString>(16, "Lorem ipsum dolor sit amet");
     }
   }
 }
-BENCHMARK(BM_UniqueAllocatedString);
+BENCHMARK(BM_MakeUniqueAllocatedString);
 
-static void BM_SharedAllocatedString(benchmark::State& state) {
+// Creating a new `shared_ptr` involves one more heap allocation for its
+// internal reference counter.
+static void BM_SharedNewAllocatedString(benchmark::State& state) {
   for (auto _ : state) {
     for (int i = 0; i < 100; i++) {
       (void)std::shared_ptr<AllocatedString>(
@@ -98,4 +100,15 @@ static void BM_SharedAllocatedString(benchmark::State& state) {
     }
   }
 }
-BENCHMARK(BM_SharedAllocatedString);
+BENCHMARK(BM_SharedNewAllocatedString);
+
+// Using `make_shared` allocates both the value and the reference counter in a
+// single memory block, thus being a bit more efficient.
+static void BM_MakeSharedAllocatedString(benchmark::State& state) {
+  for (auto _ : state) {
+    for (int i = 0; i < 100; i++) {
+      (void)std::make_shared<AllocatedString>(16, "Lorem ipsum dolor sit amet");
+    }
+  }
+}
+BENCHMARK(BM_MakeSharedAllocatedString);
