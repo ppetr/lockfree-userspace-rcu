@@ -29,7 +29,7 @@ allocation (unlike `std::shared_ptr`, which needs to allocate storage for its
 bookkeeping separately).
 
 Benchmarks comparing `MakeUnique` to the standard `std::` functions are
-available in [var_sized_benchmark.h](var_sized_benchmark.h).
+available in [var_sized_benchmark.cc](var_sized_benchmark.cc).
 
 ### Copy-on-Write
 
