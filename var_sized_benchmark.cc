@@ -53,7 +53,8 @@
 #include <cstring>
 #include <memory>
 
-#include <benchmark/benchmark.h>
+#include "absl/memory/memory.h"
+#include "benchmark/benchmark.h"
 
 namespace {
 
@@ -102,7 +103,8 @@ BENCHMARK(BM_VarSizedString);
 static void BM_MakeUniqueAllocatedString(benchmark::State& state) {
   for (auto _ : state) {
     for (int i = 0; i < 100; i++) {
-      (void)std::make_unique<AllocatedString>(16, "Lorem ipsum dolor sit amet");
+      (void)absl::make_unique<AllocatedString>(16,
+                                               "Lorem ipsum dolor sit amet");
     }
   }
 }

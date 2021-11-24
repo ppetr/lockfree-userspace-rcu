@@ -53,7 +53,7 @@ target_link_libraries(var_sized_test var_sized absl::strings gtest_main)
 add_test(NAME var_sized_test COMMAND var_sized_test)
 
 add_executable(var_sized_benchmark var_sized_benchmark.cc)
-target_link_libraries(var_sized_benchmark var_sized benchmark::benchmark_main)
+target_link_libraries(var_sized_benchmark var_sized absl::memory benchmark::benchmark_main)
 add_test(NAME var_sized_benchmark COMMAND var_sized_benchmark)
 
 # Copy on Write.
