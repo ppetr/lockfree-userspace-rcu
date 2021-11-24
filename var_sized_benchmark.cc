@@ -16,7 +16,7 @@
 // unique/shared pointers.
 //
 // Results ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// Raspberry Pi 4, g++, compiled with
+// Raspberry Pi 4, g++, compiled with ................................
 //   -DBENCHMARK_ENABLE_LTO=true -DCMAKE_BUILD_TYPE=Release)
 //
 // Run on (4 X 1500 MHz CPU s)
@@ -28,6 +28,24 @@
 // BM_UniqueAllocatedString          14833 ns        14800 ns        44468
 // BM_SharedNewAllocatedString       24308 ns        24257 ns        28854
 // BM_MakeSharedAllocatedString      17881 ns        17842 ns        39201
+//
+// Intel Core i5-3470 @ 3.20GHz, compiled with .......................
+//   -DBENCHMARK_ENABLE_LTO=true -DCMAKE_BUILD_TYPE=Release)
+//
+// Run on (4 X 3600 MHz CPU s)
+// CPU Caches:
+//   L1 Data 32 KiB (x4)
+//   L1 Instruction 32 KiB (x4)
+//   L2 Unified 256 KiB (x4)
+//   L3 Unified 6144 KiB (x1)
+// Load Average: 3.60, 2.72, 1.67
+// -----------------------------------------------------------------------
+// Benchmark                             Time             CPU   Iterations
+// -----------------------------------------------------------------------
+// BM_VarSizedString                  1546 ns         1546 ns       451920
+// BM_MakeUniqueAllocatedString       3058 ns         3058 ns       228779
+// BM_SharedNewAllocatedString        5014 ns         5014 ns       138405
+// BM_MakeSharedAllocatedString       3834 ns         3834 ns       182333
 
 #include "var_sized.h"
 
