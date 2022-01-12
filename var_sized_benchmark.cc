@@ -16,18 +16,20 @@
 // unique/shared pointers.
 //
 // Results ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// Raspberry Pi 4, g++, compiled with
+// Raspberry Pi 4, clang++-11, compiled with
 //   -DBENCHMARK_ENABLE_LTO=true -DCMAKE_BUILD_TYPE=Release)
+//   -DCMAKE_TOOLCHAIN_FILE=clang-toolchain.make
 //
 // Run on (4 X 1500 MHz CPU s)
-// Load Average: 0.17, 0.05, 0.01
-// -----------------------------------------------------------------------
-// Benchmark                             Time             CPU   Iterations
-// -----------------------------------------------------------------------
-// BM_VarSizedString                  7176 ns         7159 ns        97705
-// BM_UniqueAllocatedString          14833 ns        14800 ns        44468
-// BM_SharedNewAllocatedString       24308 ns        24257 ns        28854
-// BM_MakeSharedAllocatedString      17881 ns        17842 ns        39201
+// Load Average: 0.89, 3.06, 5.73
+// ------------------------------------------------------------------
+// Benchmark                        Time             CPU   Iterations
+// ------------------------------------------------------------------
+// BM_VarSizedUniqueString       6379 ns         6362 ns        95307
+// BM_VarSizedSharedString      11809 ns        11794 ns        59474
+// BM_MakeUniqueStdString       N/A - optimized away
+// BM_SharedStdString           22884 ns        22857 ns        30371
+// BM_MakeSharedStdString       17009 ns        16989 ns        41217
 
 #include "var_sized.h"
 
@@ -35,7 +37,8 @@
 #include <cstring>
 #include <memory>
 
-#include <benchmark/benchmark.h>
+#include "absl/memory/memory.h"
+#include "benchmark/benchmark.h"
 
 namespace {
 
@@ -43,72 +46,71 @@ namespace {
 // allocated array at `buf`.
 class VarSizedString {
  public:
-  VarSizedString(char* buf, size_t len, const char* text) : buf_(buf) {
-    strncpy(buf, text, len);
-    buf[len - 1] = '\0';
+  void SetArray(char* array, size_t length) {
+    strncpy(array_ = array, "Lorem ipsum dolor sit amet", length);
   }
 
-  const char* text() const { return buf_; }
-
  private:
-  const char* buf_;
-};
-
-// Allocates a `char` array of size `len` and copies `text` into it.
-// Deletes the array on destruction.
-class AllocatedString {
- public:
-  AllocatedString(size_t len, const char* text) : buf_(new char[len]) {
-    strncpy(buf_.get(), text, len);
-    buf_.get()[len - 1] = '\0';
-  }
-
-  const char* text() const { return buf_.get(); }
-
- private:
-  const std::unique_ptr<char[]> buf_;
+  char* array_;
 };
 
 }  // namespace
 
-static void BM_VarSizedString(benchmark::State& state) {
+static void BM_VarSizedUniqueString(benchmark::State& state) {
   for (auto _ : state) {
     for (int i = 0; i < 100; i++) {
-      (void)refptr::MakeUnique<VarSizedString, char>(
-          16, "Lorem ipsum dolor sit amet");
+      char* array;
+      auto unique = refptr::MakeUnique<VarSizedString, char>(16, array);
+      unique->SetArray(array, 16);
     }
   }
 }
-BENCHMARK(BM_VarSizedString);
+BENCHMARK(BM_VarSizedUniqueString);
 
-static void BM_MakeUniqueAllocatedString(benchmark::State& state) {
+static void BM_VarSizedSharedString(benchmark::State& state) {
   for (auto _ : state) {
     for (int i = 0; i < 100; i++) {
-      (void)std::make_unique<AllocatedString>(16, "Lorem ipsum dolor sit amet");
+      char* array;
+      auto shared = refptr::MakeShared<VarSizedString, char>(16, array);
+      shared->SetArray(array, 16);
     }
   }
 }
-BENCHMARK(BM_MakeUniqueAllocatedString);
+BENCHMARK(BM_VarSizedSharedString);
 
-// Creating a new `shared_ptr` involves one more heap allocation for its
-// internal reference counter.
-static void BM_SharedNewAllocatedString(benchmark::State& state) {
+static void BM_MakeUniqueStdString(benchmark::State& state) {
   for (auto _ : state) {
     for (int i = 0; i < 100; i++) {
-      (void)std::shared_ptr<AllocatedString>(
-          new AllocatedString(16, "Lorem ipsum dolor sit amet"));
+      auto unique = absl::make_unique<VarSizedString>();
+      std::unique_ptr<char[]> array(new char[16]);
+      unique->SetArray(array.get(), 16);
     }
   }
 }
-BENCHMARK(BM_SharedNewAllocatedString);
+BENCHMARK(BM_MakeUniqueStdString);
+
+static void BM_SharedStdString(benchmark::State& state) {
+  for (auto _ : state) {
+    for (int i = 0; i < 100; i++) {
+      // std::make_shared avoids the secondary heap allocation for its control
+      // block.
+      auto shared = std::shared_ptr<VarSizedString>(new VarSizedString());
+      std::unique_ptr<char[]> array(new char[16]);
+      shared->SetArray(array.get(), 16);
+    }
+  }
+}
+BENCHMARK(BM_SharedStdString);
 
 // Using `make_shared` allocates both the value and the reference counter in a
 // single memory block, thus being a bit more efficient.
-static void BM_MakeSharedAllocatedString(benchmark::State& state) {
+static void BM_MakeSharedStdString(benchmark::State& state) {
   for (auto _ : state) {
     for (int i = 0; i < 100; i++) {
-      (void)std::make_shared<AllocatedString>(16, "Lorem ipsum dolor sit amet");
+      auto shared = std::make_shared<VarSizedString>();
+      std::unique_ptr<char[]> array(new char[16]);
+      shared->SetArray(array.get(), 16);
     }
   }
 }
-BENCHMARK(BM_MakeSharedAllocatedString);
+BENCHMARK(BM_MakeSharedStdString);

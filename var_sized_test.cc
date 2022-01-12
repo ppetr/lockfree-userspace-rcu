@@ -14,7 +14,6 @@
 
 #include "var_sized.h"
 
-#include <cstring>
 #include <memory>
 
 #include "absl/strings/string_view.h"
@@ -23,24 +22,22 @@
 namespace refptr {
 namespace {
 
+constexpr absl::string_view kLoremIpsum = "Lorem ipsum dolor sit amet";
+
 // Copies `source` to `target` and returns `target` as an `absl::string_view`.
-absl::string_view CopyTo(const char* source, char* target, size_t target_size) {
-  strncpy(target, source, target_size);
-  target[target_size - 1] = '\0';
-  return absl::string_view(target);
+absl::string_view CopyTo(absl::string_view source, char* target,
+                         size_t target_size) {
+  auto rcount = source.copy(target, target_size);
+  return absl::string_view(target, rcount);
 }
 
 struct Foo {
  public:
-  Foo(char* buffer, size_t buffer_size, int& counter, const char* source)
-      : counter_(counter), buffer(CopyTo(source, buffer, buffer_size)) {
-    counter_++;
-  }
+  Foo(int& counter) : counter_(counter) { counter_++; }
   // The constructor is intentionally virtual to make the class non-trivial.
   virtual ~Foo() { counter_--; }
 
   int& counter_;
-  const absl::string_view buffer;
 };
 
 class VarSizedTest : public testing::Test {
@@ -53,34 +50,33 @@ class VarSizedTest : public testing::Test {
 };
 
 TEST_F(VarSizedTest, MakeUniqueWorks) {
-  auto owned = MakeUnique<Foo, char, int&, const char*>(
-      16, counter_, "Lorem ipsum dolor sit amet");
+  char* array;
+  auto owned = MakeUnique<Foo, char, int&>(16, array, counter_);
+  auto copied = CopyTo(kLoremIpsum, array, 16);
   EXPECT_EQ(counter_, 1);
-  EXPECT_EQ(absl::string_view(owned->buffer), "Lorem ipsum dol");
+  EXPECT_EQ(copied, "Lorem ipsum dolo");
+  owned = nullptr;
+  EXPECT_EQ(counter_, 0);
 }
 
 TEST_F(VarSizedTest, UniqueConvertsToSharedPtr) {
-  auto owned = MakeUnique<Foo, char, int&, const char*>(
-      16, counter_, "Lorem ipsum dolor sit amet");
+  char* array;
+  auto owned = MakeUnique<Foo, char, int&>(16, array, counter_);
   std::shared_ptr<Foo> shared(std::move(owned));
   ASSERT_FALSE(owned);
   EXPECT_EQ(counter_, 1);
-  EXPECT_EQ(shared->buffer, "Lorem ipsum dol");
+  shared = nullptr;
+  EXPECT_EQ(counter_, 0);
 }
 
-TEST_F(VarSizedTest, MakeRefCountedWorks) {
-  auto owned = MakeRefCounted<Foo, char, int&, const char*>(
-      16, counter_, "Lorem ipsum dolor sit amet");
+TEST_F(VarSizedTest, MakeSharedWorks) {
+  char* array;
+  auto shared = MakeShared<Foo, char, int&>(16, array, counter_);
+  auto copied = CopyTo(kLoremIpsum, array, 16);
   EXPECT_EQ(counter_, 1);
-  EXPECT_EQ(absl::string_view(owned->buffer), "Lorem ipsum dol");
-}
-
-TEST_F(VarSizedTest, RefCountedConvertsToShared) {
-  auto owned = MakeRefCounted<Foo, char, int&, const char*>(
-      16, counter_, "Lorem ipsum dolor sit amet");
-  auto shared = std::move(owned).Share();
-  EXPECT_EQ(counter_, 1);
-  EXPECT_EQ(shared->buffer, "Lorem ipsum dol");
+  EXPECT_EQ(copied, "Lorem ipsum dolo");
+  shared = nullptr;
+  EXPECT_EQ(counter_, 0);
 }
 
 }  // namespace
