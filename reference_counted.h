@@ -90,8 +90,13 @@ struct Refcounted {
     SelfAlloc self_allocator(std::move(allocator_));
     Refcounted* ptr =
         std::allocator_traits<SelfAlloc>::allocate(self_allocator, 1);
-    std::allocator_traits<SelfAlloc>::construct(
-        self_allocator, ptr, self_allocator, std::forward<Arg>(args_)...);
+    try {
+      std::allocator_traits<SelfAlloc>::construct(
+          self_allocator, ptr, self_allocator, std::forward<Arg>(args_)...);
+    } catch (...) {
+      std::allocator_traits<SelfAlloc>::deallocate(self_allocator, ptr, 1);
+      throw;
+    }
     return ptr;
   }
 

@@ -148,9 +148,15 @@ inline std::unique_ptr<U, AllocDeleter<VarAllocator<B, Alloc, U>>> MakeUnique(
   VarAllocator<B, Alloc, U> var_alloc(std::move(alloc), length);
   U* node =
       std::allocator_traits<VarAllocator<B, Alloc, U>>::allocate(var_alloc, 1);
-  std::allocator_traits<VarAllocator<B, Alloc, U>>::construct(
-      var_alloc, node, std::forward<Arg>(args)...);
-  varsized = new (var_alloc.Array(node, 1)) B[length];
+  try {
+    std::allocator_traits<VarAllocator<B, Alloc, U>>::construct(
+        var_alloc, node, std::forward<Arg>(args)...);
+    varsized = new (var_alloc.Array(node, 1)) B[length];
+  } catch (...) {
+    std::allocator_traits<VarAllocator<B, Alloc, U>>::deallocate(var_alloc,
+                                                                 node, 1);
+    throw;
+  }
   return std::unique_ptr<U, AllocDeleter<VarAllocator<B, Alloc, U>>>(
       node, {.allocator = std::move(var_alloc)});
 }
