@@ -78,7 +78,10 @@ class VarAllocator {
         AllocatedUnits(/*t_elements=*/length));
   }
 
-  A* GetArray(T* ptr, size_t length) const {
+  // Returns an uninitialized area of memory co-allocated by a previous call to
+  // `allocate(length)`, that is suitable for holding `GetSize()` elements of
+  // type `A`.
+  A* Array(T* ptr, size_t length) const {
     return reinterpret_cast<A*>(
         &reinterpret_cast<Placeholder*>(ptr + (length - 1))->array);
   }
@@ -121,77 +124,15 @@ class VarAllocator {
   friend class VarAllocator;
 };
 
-// Owns a block of memory large enough to store a properly aligned instance of
-// `T` and additional `size` number of elements of type `A`.
-template <typename T, typename A, typename Alloc>
-class VarAllocation {
- public:
-  // Calls `~T` and deletes the corresponding `VarAllocation`.
-  // Doesn't delete the `A[]`, therefore it must be a primitive type or a
-  // trivially destructible one.
-  class Deleter {
-   public:
-    void operator()(T* to_delete) {
-      VarAllocation<T, A, Alloc> deleter(to_delete, std::move(*this));
-      deleter.Node()->~T();
-    }
+// Destroys and deallocates an instance of `U` using `Alloc`.
+template <typename U, typename Alloc>
+struct AllocDeleter {
+  Alloc allocator;
 
-   private:
-    Deleter(VarAllocator<A, Alloc, T> allocator)
-        : allocator_(std::move(allocator)) {}
-
-    VarAllocator<A, Alloc, T> allocator_;
-
-    friend class VarAllocation<T, A, Alloc>;
-  };
-
-  // Allocates memory for a properly aligned instance of `T`, plus additional
-  // array of `size` elements of `A`.
-  explicit VarAllocation(size_t size, Alloc allocator = {})
-      : deleter_(VarAllocator<A, Alloc, T>(std::move(allocator), size)),
-        node_(std::allocator_traits<VarAllocator<A, Alloc, T>>::allocate(
-            deleter_.allocator_, 1)) {}
-  VarAllocation(VarAllocation const&) = delete;
-  VarAllocation(VarAllocation&& other) {
-    node_ = other.node_;
-    other.node_ = nullptr;
-    deleter_ = std::move(other.deleter_);
+  void operator()(U* to_delete) {
+    std::allocator_traits<Alloc>::destroy(allocator, to_delete);
+    std::allocator_traits<Alloc>::deallocate(allocator, to_delete, 1);
   }
-
-  ~VarAllocation() {
-    if (node_) {
-      std::allocator_traits<VarAllocator<A, Alloc, T>>::deallocate(
-          deleter_.allocator_, node_, 1);
-    }
-  }
-
-  // Returns a pointer to an uninitialized memory area available for an
-  // instance of `T`.
-  T* Node() const { return node_; }
-  // Returns a pointer to an uninitialized memory area available for
-  // holding `size` (specified in the constructor) elements of `A`.
-  A* Array() const { return deleter_.allocator_.GetArray(node_, 1); }
-
-  size_t Size() const { return deleter_.allocator_.GetSize(); }
-
-  // Constructs a deleter for this particular `VarAllocation`.
-  // If used with a different instance, the behaivor is undefined.
-  Deleter ToDeleter() && {
-    node_ = nullptr;
-    return std::move(deleter_);
-  }
-
- private:
-  // Creates a placement from its building blocks.
-  //
-  // - `ptr` must be a pointer previously obtained from `VarAllocation::Node`.
-  // - `deleter` must be a value previously obtained by
-  //   `VarAllocation::ToDeleter`.
-  VarAllocation(T* node, Deleter&& deleter)
-      : deleter_(std::move(deleter)), node_(node) {}
-
-  Deleter deleter_;
-  T* node_;
 };
 
 // Constructs a new instance of `U` in-place using the given arguments, with an
@@ -200,14 +141,16 @@ class VarAllocation {
 // first two arguments to the constructor of `U`.
 template <typename U, typename B, typename... Arg,
           typename Alloc = std::allocator<B>>
-inline std::unique_ptr<U, typename VarAllocation<U, B, Alloc>::Deleter>
-MakeUnique(size_t length, B*& varsized, Arg&&... args) {
-  VarAllocation<U, B, Alloc> placement(length);
-  auto* node = placement.Node();
-  varsized = new (placement.Array()) B[length];
-  auto* value = new (node) U(std::forward<Arg>(args)...);
-  return std::unique_ptr<U, typename VarAllocation<U, B, Alloc>::Deleter>(
-      value, std::move(placement).ToDeleter());
+inline std::unique_ptr<U, AllocDeleter<U, VarAllocator<B, Alloc, U>>>
+MakeUnique(size_t length, B*& varsized, Arg&&... args, Alloc alloc = {}) {
+  VarAllocator<B, Alloc, U> var_alloc(std::move(alloc), length);
+  U* node =
+      std::allocator_traits<VarAllocator<B, Alloc, U>>::allocate(var_alloc, 1);
+  std::allocator_traits<VarAllocator<B, Alloc, U>>::construct(
+      var_alloc, node, std::forward<Arg>(args)...);
+  varsized = new (var_alloc.Array(node, 1)) B[length];
+  return std::unique_ptr<U, AllocDeleter<U, VarAllocator<B, Alloc, U>>>(
+      node, {.allocator = std::move(var_alloc)});
 }
 
 template <typename U, typename B, typename... Arg,
