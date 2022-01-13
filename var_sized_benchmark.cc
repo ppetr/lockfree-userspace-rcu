@@ -17,19 +17,29 @@
 //
 // Results ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // Raspberry Pi 4, clang++-11, compiled with
-//   -DBENCHMARK_ENABLE_LTO=true -DCMAKE_BUILD_TYPE=Release)
+//   -DBENCHMARK_ENABLE_LTO=true -DCMAKE_BUILD_TYPE=Release
 //   -DCMAKE_TOOLCHAIN_FILE=clang-toolchain.make
-//
 // Run on (4 X 1500 MHz CPU s)
-// Load Average: 0.89, 3.06, 5.73
 // ------------------------------------------------------------------
 // Benchmark                        Time             CPU   Iterations
 // ------------------------------------------------------------------
-// BM_VarSizedUniqueString       6379 ns         6362 ns        95307
-// BM_VarSizedSharedString      11809 ns        11794 ns        59474
-// BM_MakeUniqueStdString       N/A - optimized away
-// BM_SharedStdString           22884 ns        22857 ns        30371
-// BM_MakeSharedStdString       17009 ns        16989 ns        41217
+// BM_VarSizedUniqueString       7964 ns         7948 ns        88029
+// BM_VarSizedSharedString      11800 ns        11773 ns        59040
+// BM_MakeUniqueStdString       <N/A - optimized away>
+// BM_SharedStdString           29398 ns        29340 ns        24350
+// BM_MakeSharedStdString       19331 ns        19292 ns        35853
+//
+// Raspberry Pi 4, g++-8.3.0, compiled with
+//   -DBENCHMARK_ENABLE_LTO=true -DCMAKE_BUILD_TYPE=Release
+// Run on (4 X 1500 MHz CPU s)
+// ------------------------------------------------------------------
+// Benchmark                        Time             CPU   Iterations
+// ------------------------------------------------------------------
+// BM_VarSizedUniqueString       7432 ns         7396 ns        94677
+// BM_VarSizedSharedString      11417 ns        11373 ns        61362
+// BM_MakeUniqueStdString       16206 ns        16141 ns        42563
+// BM_SharedStdString           27904 ns        27796 ns        25215
+// BM_MakeSharedStdString       19107 ns        18997 ns        36993
 
 #include "var_sized.h"
 
