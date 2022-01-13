@@ -218,7 +218,7 @@ inline std::shared_ptr<U> MakeShared(size_t length, B*& varsized, Arg&&... args,
   std::shared_ptr<U> shared =
       std::allocate_shared<U, VarAllocator<B, Alloc, U>, Arg...>(
           var_alloc, std::forward<Arg>(args)...);
-  varsized = var_alloc.GetArray(shared.get(), 1);
+  varsized = new (var_alloc.Array(shared.get(), 1)) B[length];
   return shared;
 }
 
