@@ -20,6 +20,8 @@
 #include <type_traits>
 #include <utility>
 
+#include "absl/base/attributes.h"
+
 namespace refptr {
 
 class Refcount {
@@ -66,60 +68,49 @@ class Refcount {
   std::atomic<int32_t> count_;
 };
 
-template <typename T>
-struct DefaultRefDeleter;
-
 // Keeps a `Refcount`-ed instance of `T`.
 //
-// `Deleter` is more complex than standard C++ deleters, because it needs to
-// achieve deletion of a structure which it is a part of - this is necessary
-// for the case of variable-sized classes. It must be a copyable or moveable
-// type, not `final`, callable with argument `Refcounted<T, Deleter>*` (with
-// arbitrary return type).
-//
-// `Refcounted` internally derives from `Deleter` to achieve empty base
-// optimization for the case of the default deleter which doesn't need to carry
-// any information <https://en.cppreference.com/w/cpp/language/ebo>.
-//
-// When a caller requests deletion of an instance via `SelfDelete`, `Deleter`
-// is moved or copied out to a local variable and then invoked on `this` to
-// destroy and free it.
-template <typename T, class Deleter = DefaultRefDeleter<T>>
-struct Refcounted : private Deleter {
-  static_assert(std::is_copy_constructible<Deleter>::value ||
-                    std::is_move_constructible<Deleter>::value,
-                "The Deleter must be copy-constructible or move-constructible");
-  static_assert(std::is_class<Deleter>::value, "The Deleter must be a `class`");
-#if __cplusplus >= 201402L
-  static_assert(!std::is_final<Deleter>::value,
-                "The Deleter must not be `final`");
-#endif  // __cplusplus >= 201703L
-
+// When a caller requests deletion of an instance via `SelfDelete`, `Alloc`
+// is used to destroy and delete the memory block.
+template <typename T, class Alloc = std::allocator<T>>
+struct Refcounted {
  public:
   template <typename... Arg>
-  Refcounted(Deleter deleter, Arg&&... args)
-      : Deleter(std::move(deleter)),
+  ABSL_DEPRECATED(
+      "Do not use - use `New` below instead. The constructor is made public "
+      "just so that it's possible to use `construct` of an allocator to "
+      "construct new instances.")
+  Refcounted(Alloc allocator_, Arg&&... args_)
+      : allocator(std::move(allocator_)),
         refcount(),
-        nested(std::forward<Arg>(args)...) {}
+        nested(std::forward<Arg>(args_)...) {}
+
+  template <typename... Arg>
+  static Refcounted* New(Alloc allocator_, Arg&&... args_) {
+    SelfAlloc self_allocator(std::move(allocator_));
+    Refcounted* ptr =
+        std::allocator_traits<SelfAlloc>::allocate(self_allocator, 1);
+    std::allocator_traits<SelfAlloc>::construct(
+        self_allocator, ptr, self_allocator, std::forward<Arg>(args_)...);
+    return ptr;
+  }
 
   void SelfDelete() && {
-    // Move/copy out the deleter to a local variable so that `this` can be
+    // Move out the allocator to a local variable so that `this` can be
     // destroyed.
-    Deleter deleter = std::move(*this);
-    (void)deleter(this);
+    auto allocator_copy = std::move(allocator);
+    std::allocator_traits<SelfAlloc>::destroy(allocator_copy, this);
+    std::allocator_traits<SelfAlloc>::deallocate(allocator_copy, this, 1);
   }
 
   mutable Refcount refcount;
   T nested;
-};
 
-// The default deleter usable with `Refcounted` that calls `delete` on the
-// pointer argument.
-template <typename T>
-struct DefaultRefDeleter {
-  void operator()(Refcounted<T, DefaultRefDeleter<T>>* to_delete) {
-    delete to_delete;
-  }
+ private:
+  using SelfAlloc =
+      typename std::allocator_traits<Alloc>::template rebind_alloc<Refcounted>;
+
+  SelfAlloc allocator;
 };
 
 }  // namespace refptr

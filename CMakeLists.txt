@@ -38,7 +38,7 @@ add_subdirectory(benchmark EXCLUDE_FROM_ALL)
 
 add_library(ref INTERFACE)
 target_include_directories(ref INTERFACE .)
-target_link_libraries(ref INTERFACE absl::utility absl::variant)
+target_link_libraries(ref INTERFACE absl::base absl::utility absl::variant)
 
 add_executable(ref_test ref_test.cc)
 target_link_libraries(ref_test absl::utility absl::variant gtest_main)

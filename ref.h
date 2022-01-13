@@ -38,7 +38,7 @@
 
 namespace refptr {
 
-template <typename T, class Deleter>
+template <typename T, typename Alloc>
 class Ref;
 
 namespace internal {
@@ -53,11 +53,11 @@ struct BaseOwnershipTraits {
                                                 : OwnershipTraits::unique;
 };
 
-template <typename T, class Deleter, OwnershipTraits>
+template <typename T, typename Alloc, OwnershipTraits>
 class RefBase;
 
-template <typename T, class Deleter>
-class RefBase<T, Deleter, OwnershipTraits::shared> {
+template <typename T, typename Alloc>
+class RefBase<T, Alloc, OwnershipTraits::shared> {
  public:
   RefBase(RefBase const &other) { (*this) = other; }
   RefBase(RefBase &&other) { (*this) = std::move(other); }
@@ -80,32 +80,31 @@ class RefBase<T, Deleter, OwnershipTraits::shared> {
   const T &operator*() const { return buffer_->nested; }
   const T *operator->() const { return &buffer_->nested; }
 
-  absl::variant<Ref<T, Deleter>, Ref<const T, Deleter>> AttemptToClaim() &&;
+  absl::variant<Ref<T, Alloc>, Ref<const T, Alloc>> AttemptToClaim() &&;
 
  protected:
   constexpr RefBase() : buffer_(nullptr) {}
-  constexpr explicit RefBase(const Refcounted<T, Deleter> *buffer)
+  constexpr explicit RefBase(const Refcounted<T, Alloc> *buffer)
       : buffer_(buffer) {}
 
   // Deletes the instance pointed to `buffer_` and clears the variable.
   inline void Clear() {
     if ((buffer_ != nullptr) && buffer_->refcount.Dec()) {
-      std::move(*const_cast<Refcounted<T, Deleter> *>(buffer_)).SelfDelete();
+      std::move(*const_cast<Refcounted<T, Alloc> *>(buffer_)).SelfDelete();
       buffer_ = nullptr;
     }
   }
 
   // Clears `buffer_` and returns the original value.
-  inline Refcounted<T, Deleter> *move_buffer() && {
-    return const_cast<Refcounted<T, Deleter> *>(
-        absl::exchange(buffer_, nullptr));
+  inline Refcounted<T, Alloc> *move_buffer() && {
+    return const_cast<Refcounted<T, Alloc> *>(absl::exchange(buffer_, nullptr));
   }
 
-  const Refcounted<T, Deleter> *buffer_ = nullptr;
+  const Refcounted<T, Alloc> *buffer_ = nullptr;
 };
 
-template <typename T, class Deleter>
-class RefBase<T, Deleter, OwnershipTraits::unique> {
+template <typename T, typename Alloc>
+class RefBase<T, Alloc, OwnershipTraits::unique> {
  public:
   RefBase(RefBase const &other) = delete;
   RefBase(RefBase &&other) { (*this) = std::move(other); }
@@ -123,11 +122,10 @@ class RefBase<T, Deleter, OwnershipTraits::unique> {
   T &operator*() { return buffer_->nested; }
   T *operator->() { return &buffer_->nested; }
 
-  Ref<const T, Deleter> Share() &&;
+  Ref<const T, Alloc> Share() &&;
 
  protected:
-  constexpr explicit RefBase(Refcounted<T, Deleter> *buffer)
-      : buffer_(buffer) {}
+  constexpr explicit RefBase(Refcounted<T, Alloc> *buffer) : buffer_(buffer) {}
 
   // Clears `buffer_`, deleting it if the refcount decrements to 0.
   inline void Clear() {
@@ -139,11 +137,11 @@ class RefBase<T, Deleter, OwnershipTraits::unique> {
   }
 
   // Clears `buffer_` and returns the original value.
-  inline Refcounted<T, Deleter> *move_buffer() && {
+  inline Refcounted<T, Alloc> *move_buffer() && {
     return absl::exchange(buffer_, nullptr);
   }
 
-  Refcounted<T, Deleter> *buffer_ = nullptr;
+  Refcounted<T, Alloc> *buffer_ = nullptr;
 };
 
 }  // namespace internal
@@ -158,27 +156,26 @@ class RefBase<T, Deleter, OwnershipTraits::unique> {
 // They can be converted to each other with `Ref<T>::Share()` and
 // `Ref<const T>::AttemptToClain()`.
 template <typename T,
-          class Deleter =
-              DefaultRefDeleter<typename std::remove_const<T>::type>>
+          typename Alloc = std::allocator<typename std::remove_const<T>::type>>
 class Ref final
-    : public internal::RefBase<typename std::remove_const<T>::type, Deleter,
+    : public internal::RefBase<typename std::remove_const<T>::type, Alloc,
                                internal::BaseOwnershipTraits<T>::traits> {
   static_assert(
       std::is_object<T>::value,
       "The contained type T must a regular or const-qualified object");
 
  private:
-  using Base = internal::RefBase<typename std::remove_const<T>::type, Deleter,
+  using Base = internal::RefBase<typename std::remove_const<T>::type, Alloc,
                                  internal::BaseOwnershipTraits<T>::traits>;
 
  public:
   constexpr explicit Ref(
-      Refcounted<typename std::remove_const<T>::type, Deleter> *buffer)
+      Refcounted<typename std::remove_const<T>::type, Alloc> *buffer)
       : Base(buffer) {}
 
   template <typename U = std::remove_const<T>,
             typename std::enable_if<!std::is_same<U, T>::value>::type>
-  Ref(Ref<U, Deleter> &&unique) : Ref(unique.move_buffer()) {}
+  Ref(Ref<U, Alloc> &&unique) : Ref(unique.move_buffer()) {}
 
   Ref(Ref const &other) = default;
   Ref(Ref &&other) = default;
@@ -186,33 +183,32 @@ class Ref final
   Ref &operator=(Ref const &other) = default;
   Ref &operator=(Ref &&other) = default;
 
-  friend class Ref<typename std::add_const<T>::type, Deleter>;
-  friend class Ref<typename std::remove_const<T>::type, Deleter>;
+  friend class Ref<typename std::add_const<T>::type, Alloc>;
+  friend class Ref<typename std::remove_const<T>::type, Alloc>;
 };
 
 namespace internal {
 
-template <typename T, class Deleter>
-absl::variant<Ref<T, Deleter>, Ref<const T, Deleter>>
-RefBase<T, Deleter, OwnershipTraits::shared>::AttemptToClaim() && {
+template <typename T, typename Alloc>
+absl::variant<Ref<T, Alloc>, Ref<const T, Alloc>>
+RefBase<T, Alloc, OwnershipTraits::shared>::AttemptToClaim() && {
   if (buffer_->refcount.IsOne()) {
-    return Ref<T, Deleter>(std::move(*this).move_buffer());
+    return Ref<T, Alloc>(std::move(*this).move_buffer());
   } else {
-    return Ref<const T, Deleter>(std::move(*this).move_buffer());
+    return Ref<const T, Alloc>(std::move(*this).move_buffer());
   }
 }
 
-template <typename T, class Deleter>
-Ref<const T, Deleter> RefBase<T, Deleter, OwnershipTraits::unique>::Share() && {
-  return Ref<const T, Deleter>(std::move(*this).move_buffer());
+template <typename T, typename Alloc>
+Ref<const T, Alloc> RefBase<T, Alloc, OwnershipTraits::unique>::Share() && {
+  return Ref<const T, Alloc>(std::move(*this).move_buffer());
 }
 
 }  // namespace internal
 
 template <typename T, typename... Arg>
-inline Ref<T, DefaultRefDeleter<T>> New(Arg &&... args) {
-  return Ref<T, DefaultRefDeleter<T>>(new Refcounted<T, DefaultRefDeleter<T>>(
-      DefaultRefDeleter<T>(), std::forward<Arg>(args)...));
+inline Ref<T> New(Arg &&... args) {
+  return Ref<T>(Refcounted<T>::New({}, std::forward<Arg>(args)...));
 }
 
 }  // namespace refptr
