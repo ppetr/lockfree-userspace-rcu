@@ -125,11 +125,13 @@ class VarAllocator {
 };
 
 // Destroys and deallocates an instance of `U` using `Alloc`.
-template <typename U, typename Alloc>
+template <typename Alloc>
 struct AllocDeleter {
   Alloc allocator;
 
-  void operator()(U* to_delete) {
+  using pointer = typename std::allocator_traits<Alloc>::pointer;
+
+  void operator()(pointer to_delete) {
     std::allocator_traits<Alloc>::destroy(allocator, to_delete);
     std::allocator_traits<Alloc>::deallocate(allocator, to_delete, 1);
   }
@@ -141,15 +143,15 @@ struct AllocDeleter {
 // first two arguments to the constructor of `U`.
 template <typename U, typename B, typename... Arg,
           typename Alloc = std::allocator<B>>
-inline std::unique_ptr<U, AllocDeleter<U, VarAllocator<B, Alloc, U>>>
-MakeUnique(size_t length, B*& varsized, Arg&&... args, Alloc alloc = {}) {
+inline std::unique_ptr<U, AllocDeleter<VarAllocator<B, Alloc, U>>> MakeUnique(
+    size_t length, B*& varsized, Arg&&... args, Alloc alloc = {}) {
   VarAllocator<B, Alloc, U> var_alloc(std::move(alloc), length);
   U* node =
       std::allocator_traits<VarAllocator<B, Alloc, U>>::allocate(var_alloc, 1);
   std::allocator_traits<VarAllocator<B, Alloc, U>>::construct(
       var_alloc, node, std::forward<Arg>(args)...);
   varsized = new (var_alloc.Array(node, 1)) B[length];
-  return std::unique_ptr<U, AllocDeleter<U, VarAllocator<B, Alloc, U>>>(
+  return std::unique_ptr<U, AllocDeleter<VarAllocator<B, Alloc, U>>>(
       node, {.allocator = std::move(var_alloc)});
 }
 
