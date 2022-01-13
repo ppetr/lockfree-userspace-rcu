@@ -75,15 +75,18 @@ class Refcount {
 template <typename T, class Alloc = std::allocator<T>>
 struct Refcounted {
  public:
+  using SelfAlloc =
+      typename std::allocator_traits<Alloc>::template rebind_alloc<Refcounted>;
+
   template <typename... Arg>
   ABSL_DEPRECATED(
       "Do not use - use `New` below instead. The constructor is made public "
       "just so that it's possible to use `construct` of an allocator to "
       "construct new instances.")
   Refcounted(Alloc allocator_, Arg&&... args_)
-      : allocator(std::move(allocator_)),
-        refcount(),
-        nested(std::forward<Arg>(args_)...) {}
+      : refcount(),
+        nested(std::forward<Arg>(args_)...),
+        allocator(std::move(allocator_)) {}
 
   template <typename... Arg>
   static Refcounted* New(Alloc allocator_, Arg&&... args_) {
@@ -91,8 +94,9 @@ struct Refcounted {
     Refcounted* ptr =
         std::allocator_traits<SelfAlloc>::allocate(self_allocator, 1);
     try {
-      std::allocator_traits<SelfAlloc>::construct(
-          self_allocator, ptr, self_allocator, std::forward<Arg>(args_)...);
+      std::allocator_traits<SelfAlloc>::construct(self_allocator, ptr,
+                                                  StoredAlloc(self_allocator),
+                                                  std::forward<Arg>(args_)...);
     } catch (...) {
       std::allocator_traits<SelfAlloc>::deallocate(self_allocator, ptr, 1);
       throw;
@@ -103,19 +107,22 @@ struct Refcounted {
   void SelfDelete() && {
     // Move out the allocator to a local variable so that `this` can be
     // destroyed.
-    auto allocator_copy = std::move(allocator);
+    SelfAlloc allocator_copy = std::move(allocator);
     std::allocator_traits<SelfAlloc>::destroy(allocator_copy, this);
     std::allocator_traits<SelfAlloc>::deallocate(allocator_copy, this, 1);
   }
+
+  SelfAlloc Allocator() { return SelfAlloc(allocator); }
 
   mutable Refcount refcount;
   T nested;
 
  private:
-  using SelfAlloc =
-      typename std::allocator_traits<Alloc>::template rebind_alloc<Refcounted>;
-
-  SelfAlloc allocator;
+  // The stored allocator is rebound to a different type thatn `SelfAlloc`,
+  // since would create a circular dependency when defining the type.
+  using StoredAlloc =
+      typename std::allocator_traits<Alloc>::template rebind_alloc<T>;
+  StoredAlloc allocator;
 };
 
 }  // namespace refptr

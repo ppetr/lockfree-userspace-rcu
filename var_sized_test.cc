@@ -79,5 +79,16 @@ TEST_F(VarSizedTest, MakeSharedWorks) {
   EXPECT_EQ(counter_, 0);
 }
 
+TEST_F(VarSizedTest, MakeRefCountedWorks) {
+  {
+    char* array;
+    auto ref = MakeRefCounted<Foo, char, int&>(16, array, counter_);
+    auto copied = CopyTo(kLoremIpsum, array, 16);
+    EXPECT_EQ(counter_, 1);
+    EXPECT_EQ(copied, "Lorem ipsum dolo");
+  }
+  EXPECT_EQ(counter_, 0);
+}
+
 }  // namespace
 }  // namespace refptr

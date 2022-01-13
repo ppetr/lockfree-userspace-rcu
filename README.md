@@ -37,10 +37,9 @@ type-safe sharing:
   and is consumed by the conversion.  The opposite convertion is possible by
   `AttemptToClaim() &&` if the caller is a sole owner of it.
 
-~~These two concepts can be combined together using `MakeRefCounted`, which
+These two concepts can be combined together using `MakeRefCounted`, which
 creates a reference-counted, variable-sized structure with a single memory
-allocation (unlike `std::shared_ptr`, which needs to allocate storage for its
-bookkeeping separately).~~
+allocation (akin to [`std::allocate_shared`]).
 
 ### Copy-on-Write
 

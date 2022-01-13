@@ -173,6 +173,22 @@ inline std::shared_ptr<U> MakeShared(size_t length, B*& varsized, Arg&&... args,
   return shared;
 }
 
+// Similar to `MakeUnique` above, also with a single memory allocation, with
+// the difference that it creates a reference counted value to allow efficient
+// and type-safe sharing of the construted value.
+template <typename U, typename B, typename... Arg,
+          typename Alloc = std::allocator<U>>
+inline Ref<U, VarAllocator<B, Alloc, U>> MakeRefCounted(size_t length,
+                                                        B*& varsized,
+                                                        Arg&&... args,
+                                                        Alloc alloc = {}) {
+  auto* refcounted = Refcounted<U, VarAllocator<B, Alloc, U>>::New(
+      VarAllocator<B, Alloc, U>(std::move(alloc), length),
+      std::forward<Arg>(args)...);
+  varsized = new (refcounted->Allocator().Array(refcounted, 1)) B[length];
+  return Ref<U, VarAllocator<B, Alloc, U>>(refcounted);
+}
+
 }  // namespace refptr
 
 #endif  // _VAR_SIZED_H

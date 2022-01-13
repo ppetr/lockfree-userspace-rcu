@@ -18,28 +18,31 @@
 // Results ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // Raspberry Pi 4, clang++-11, compiled with
 //   -DBENCHMARK_ENABLE_LTO=true -DCMAKE_BUILD_TYPE=Release
-//   -DCMAKE_TOOLCHAIN_FILE=clang-toolchain.make
+//   -DCMAKE_TOOLCHAIN_FILE=clang-toolchain.make CPPFLAGS=-std=c++17
 // Run on (4 X 1500 MHz CPU s)
-// ------------------------------------------------------------------
-// Benchmark                        Time             CPU   Iterations
-// ------------------------------------------------------------------
-// BM_VarSizedUniqueString       7964 ns         7948 ns        88029
-// BM_VarSizedSharedString      11800 ns        11773 ns        59040
-// BM_MakeUniqueStdString       <N/A - optimized away>
-// BM_SharedStdString           29398 ns        29340 ns        24350
-// BM_MakeSharedStdString       19331 ns        19292 ns        35853
+// Load Average: 4.48, 7.95, 5.12
+// ----------------------------------------------------------------------
+// Benchmark                            Time             CPU   Iterations
+// ----------------------------------------------------------------------
+// BM_VarSizedUniqueString           5997 ns         5973 ns       117263
+// BM_VarSizedSharedString          11777 ns        11764 ns        59430
+// BM_VarSizedRefCountedString       6107 ns         6105 ns       114909
+// BM_MakeUniqueStdString           < n/a - optimized away >
+// BM_SharedStdString               24087 ns        23813 ns        29507
+// BM_MakeSharedStdString           17022 ns        16906 ns        41018
 //
 // Raspberry Pi 4, g++-8.3.0, compiled with
 //   -DBENCHMARK_ENABLE_LTO=true -DCMAKE_BUILD_TYPE=Release
 // Run on (4 X 1500 MHz CPU s)
-// ------------------------------------------------------------------
-// Benchmark                        Time             CPU   Iterations
-// ------------------------------------------------------------------
-// BM_VarSizedUniqueString       7432 ns         7396 ns        94677
-// BM_VarSizedSharedString      11417 ns        11373 ns        61362
-// BM_MakeUniqueStdString       16206 ns        16141 ns        42563
-// BM_SharedStdString           27904 ns        27796 ns        25215
-// BM_MakeSharedStdString       19107 ns        18997 ns        36993
+// ----------------------------------------------------------------------
+// Benchmark                            Time             CPU   Iterations
+// ----------------------------------------------------------------------
+// BM_VarSizedUniqueString           8951 ns         8948 ns        78123
+// BM_VarSizedSharedString          11299 ns        11295 ns        61455
+// BM_VarSizedRefCountedString       9042 ns         9034 ns        77699
+// BM_MakeUniqueStdString           14001 ns        13989 ns        48085
+// BM_SharedStdString               24328 ns        24310 ns        28820
+// BM_MakeSharedStdString           18341 ns        18334 ns        38320
 
 #include "var_sized.h"
 
@@ -87,6 +90,19 @@ static void BM_VarSizedSharedString(benchmark::State& state) {
   }
 }
 BENCHMARK(BM_VarSizedSharedString);
+
+// Using `make_shared` allocates both the value and the reference counter in a
+// single memory block, thus being a bit more efficient.
+static void BM_VarSizedRefCountedString(benchmark::State& state) {
+  for (auto _ : state) {
+    for (int i = 0; i < 100; i++) {
+      char* array;
+      auto ref = refptr::MakeRefCounted<VarSizedString, char>(16, array);
+      ref->SetArray(array, 16);
+    }
+  }
+}
+BENCHMARK(BM_VarSizedRefCountedString);
 
 static void BM_MakeUniqueStdString(benchmark::State& state) {
   for (auto _ : state) {
