@@ -7,9 +7,23 @@ _*Disclaimer:* This is not an officially supported Google product._
 ## Summary
 
 [`MakeUnique(length, args...)`](var_sized.h) creates a new value on the heap
-together with an array of size `length` in a **single allocation**.  The array
-is passed as an additional argument when constructing `T`. Proper destruction
-is ensured by a custom deleter.
+together with an array of size `length` in a **single allocation**. A pointer
+to the array is stored in an output argument. Proper destruction is ensured by
+a custom deleter.
+
+[`MakeShared(length, args...)`](var_sized.h) creates a new value on the heap
+together with an array of size `length` in a **single allocation** (assuming
+[`std::allocate_shared`] uses a single allocation). A pointer to the array is
+stored in an output argument.  Proper destruction is ensured by a custom
+allocator.
+
+[`std::allocate_shared`]: https://en.cppreference.com/w/cpp/memory/shared_ptr/allocate_shared
+
+Benchmarks comparing `MakeUnique` and `MakeShared` to the standard `std::`
+functions are available in [var_sized_benchmark.cc](var_sized_benchmark.cc).
+
+**Note:** The `Ref` type below, although slightly more performant, is mostly
+made obsolete by `MakeShared`.
 
 Type [`Ref`](ref.h) manages a reference-counted value on the heap with
 type-safe sharing:
@@ -23,13 +37,10 @@ type-safe sharing:
   and is consumed by the conversion.  The opposite convertion is possible by
   `AttemptToClaim() &&` if the caller is a sole owner of it.
 
-These two concepts can be combined together using `MakeRefCounted`, which
+~~These two concepts can be combined together using `MakeRefCounted`, which
 creates a reference-counted, variable-sized structure with a single memory
 allocation (unlike `std::shared_ptr`, which needs to allocate storage for its
-bookkeeping separately).
-
-Benchmarks comparing `MakeUnique` to the standard `std::` functions are
-available in [var_sized_benchmark.cc](var_sized_benchmark.cc).
+bookkeeping separately).~~
 
 ### Copy-on-Write
 
