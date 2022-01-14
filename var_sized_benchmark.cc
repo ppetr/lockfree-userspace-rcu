@@ -91,8 +91,6 @@ static void BM_VarSizedSharedString(benchmark::State& state) {
 }
 BENCHMARK(BM_VarSizedSharedString);
 
-// Using `make_shared` allocates both the value and the reference counter in a
-// single memory block, thus being a bit more efficient.
 static void BM_VarSizedRefCountedString(benchmark::State& state) {
   for (auto _ : state) {
     for (int i = 0; i < 100; i++) {
@@ -103,6 +101,20 @@ static void BM_VarSizedRefCountedString(benchmark::State& state) {
   }
 }
 BENCHMARK(BM_VarSizedRefCountedString);
+
+static void BM_VarSizedRefCountedSharedString(benchmark::State& state) {
+  for (auto _ : state) {
+    for (int i = 0; i < 100; i++) {
+      char* array;
+      auto ref = refptr::MakeRefCounted<VarSizedString, char>(16, array);
+      // Move the value to a shared pointer and back to trigger its atomic
+      // refcount operations.
+      auto shared = std::move(ref).Share();
+      absl::get<0>(std::move(shared).AttemptToClaim())->SetArray(array, 16);
+    }
+  }
+}
+BENCHMARK(BM_VarSizedRefCountedSharedString);
 
 static void BM_MakeUniqueStdString(benchmark::State& state) {
   for (auto _ : state) {
@@ -118,8 +130,6 @@ BENCHMARK(BM_MakeUniqueStdString);
 static void BM_SharedStdString(benchmark::State& state) {
   for (auto _ : state) {
     for (int i = 0; i < 100; i++) {
-      // std::make_shared avoids the secondary heap allocation for its control
-      // block.
       auto shared = std::shared_ptr<VarSizedString>(new VarSizedString());
       std::unique_ptr<char[]> array(new char[16]);
       shared->SetArray(array.get(), 16);
