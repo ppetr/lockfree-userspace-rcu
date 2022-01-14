@@ -59,8 +59,8 @@ namespace {
 // allocated array at `buf`.
 class VarSizedString {
  public:
-  void SetArray(char* array, size_t length) {
-    strncpy(array_ = array, "Lorem ipsum dolor sit amet", length);
+  const char* SetArray(char* array, size_t length) {
+    return strncpy(array_ = array, "Lorem ipsum dolor sit amet", length);
   }
 
  private:
@@ -74,7 +74,8 @@ static void BM_VarSizedUniqueString(benchmark::State& state) {
     for (int i = 0; i < 100; i++) {
       char* array;
       auto unique = refptr::MakeUnique<VarSizedString, char>(16, array);
-      unique->SetArray(array, 16);
+      benchmark::DoNotOptimize(unique->SetArray(array, 16));
+      benchmark::ClobberMemory();
     }
   }
 }
@@ -85,7 +86,8 @@ static void BM_VarSizedSharedString(benchmark::State& state) {
     for (int i = 0; i < 100; i++) {
       char* array;
       auto shared = refptr::MakeShared<VarSizedString, char>(16, array);
-      shared->SetArray(array, 16);
+      benchmark::DoNotOptimize(shared->SetArray(array, 16));
+      benchmark::ClobberMemory();
     }
   }
 }
@@ -98,7 +100,8 @@ static void BM_VarSizedRefCountedString(benchmark::State& state) {
     for (int i = 0; i < 100; i++) {
       char* array;
       auto ref = refptr::MakeRefCounted<VarSizedString, char>(16, array);
-      ref->SetArray(array, 16);
+      benchmark::DoNotOptimize(ref->SetArray(array, 16));
+      benchmark::ClobberMemory();
     }
   }
 }
@@ -109,7 +112,8 @@ static void BM_MakeUniqueStdString(benchmark::State& state) {
     for (int i = 0; i < 100; i++) {
       auto unique = absl::make_unique<VarSizedString>();
       std::unique_ptr<char[]> array(new char[16]);
-      unique->SetArray(array.get(), 16);
+      benchmark::DoNotOptimize(unique->SetArray(array.get(), 16));
+      benchmark::ClobberMemory();
     }
   }
 }
@@ -122,7 +126,8 @@ static void BM_SharedStdString(benchmark::State& state) {
       // block.
       auto shared = std::shared_ptr<VarSizedString>(new VarSizedString());
       std::unique_ptr<char[]> array(new char[16]);
-      shared->SetArray(array.get(), 16);
+      benchmark::DoNotOptimize(shared->SetArray(array.get(), 16));
+      benchmark::ClobberMemory();
     }
   }
 }
@@ -135,7 +140,8 @@ static void BM_MakeSharedStdString(benchmark::State& state) {
     for (int i = 0; i < 100; i++) {
       auto shared = std::make_shared<VarSizedString>();
       std::unique_ptr<char[]> array(new char[16]);
-      shared->SetArray(array.get(), 16);
+      benchmark::DoNotOptimize(shared->SetArray(array.get(), 16));
+      benchmark::ClobberMemory();
     }
   }
 }
