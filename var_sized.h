@@ -78,6 +78,22 @@ class VarAllocator {
         AllocatedUnits(/*t_elements=*/length));
   }
 
+  template <class U, class... Arg>
+  void construct(U* ptr, Arg&&... args) {
+    std::allocator_traits<UnitAlloc>::construct(allocator_, ptr,
+                                                std::forward<Arg>(args)...);
+  }
+  template <class U>
+  void destroy(U* ptr) {
+    std::allocator_traits<UnitAlloc>::destroy(allocator_, ptr);
+  }
+  size_t max_size() const {
+    return (std::allocator_traits<UnitAlloc>::max_size(allocator_) *
+                sizeof(Unit) -
+            AdditionalBytes(size_)) /
+           sizeof(T);
+  }
+
   // Returns an uninitialized area of memory co-allocated by a previous call to
   // `allocate(length)`, that is suitable for holding `GetSize()` elements of
   // type `A`.
@@ -107,9 +123,14 @@ class VarAllocator {
   using UnitAlloc =
       typename std::allocator_traits<Alloc>::template rebind_alloc<Unit>;
 
+  // The number of additional bytes necessary to allocate.
+  static constexpr size_t AdditionalBytes(size_t a_elements) {
+    return sizeof(Placeholder) - sizeof(T) + (a_elements - 1) * sizeof(A) +
+           sizeof(Unit) - 1l;
+  }
+
   static constexpr size_t AllocatedUnits(size_t a_elements, size_t t_elements) {
-    return (sizeof(T) * (t_elements - 1) + sizeof(Placeholder) +
-            (a_elements - 1) * sizeof(A) + sizeof(Unit) - 1) /
+    return (sizeof(T) * t_elements + AdditionalBytes(a_elements)) /
            sizeof(Unit);
   }
 

@@ -90,5 +90,14 @@ TEST_F(VarSizedTest, MakeRefCountedWorks) {
   EXPECT_EQ(counter_, 0);
 }
 
+TEST_F(VarSizedTest, MaxSizeSubtractsReserve) {
+  using Alloc = VarAllocator<char, std::allocator<int>, int>;
+  const size_t max_size = std::allocator_traits<Alloc>::max_size(Alloc({}, 16));
+  EXPECT_GE(max_size, 1);
+  EXPECT_LT(max_size, std::allocator_traits<std::allocator<int>>::max_size({}) -
+                          16 / sizeof(int))
+      << "At least 16 bytes must be reserved for the additional char[]";
+}
+
 }  // namespace
 }  // namespace refptr
