@@ -19,9 +19,6 @@ allocator.
 
 [`std::allocate_shared`]: https://en.cppreference.com/w/cpp/memory/shared_ptr/allocate_shared
 
-Benchmarks comparing `MakeUnique` and `MakeShared` to the standard `std::`
-functions are available in [var_sized_benchmark.cc](var_sized_benchmark.cc).
-
 **Note:** The `Ref` type below, although slightly more performant, is mostly
 made obsolete by `MakeShared`.
 
@@ -40,6 +37,53 @@ type-safe sharing:
 These two concepts can be combined together using `MakeRefCounted`, which
 creates a reference-counted, variable-sized structure with a single memory
 allocation (akin to [`std::allocate_shared`]).
+
+### Benchmarks
+
+Benchmarks comparing `MakeUnique` and `MakeShared` to the standard `std::`
+functions are defined in [var_sized_benchmark.cc](var_sized_benchmark.cc).
+
+Results on _Intel(R) Core(TM) i5-3470 CPU @ 3.20GHz_ with
+-DCMAKE_TOOLCHAIN_FILE="devel/toolchain-**clang11**.cmake" -DBENCHMARK_ENABLE_LTO=true -DCMAKE_BUILD_TYPE=Release:
+
+```
+CPU Caches:
+  L1 Data 32 KiB (x4)
+  L1 Instruction 32 KiB (x4)
+  L2 Unified 256 KiB (x4)
+  L3 Unified 6144 KiB (x1)
+----------------------------------------------------------------------------
+Benchmark                                  Time             CPU   Iterations
+----------------------------------------------------------------------------
+BM_VarSizedUniqueString                 1518 ns         1518 ns       462018
+BM_VarSizedSharedString                 2567 ns         2559 ns       275427
+BM_VarSizedRefCountedString             1521 ns         1520 ns       462505
+BM_VarSizedRefCountedSharedString       1553 ns         1553 ns       453952
+BM_MakeUniqueStdString                  1745 ns         1745 ns       401544
+BM_SharedStdString                      6480 ns         6480 ns       107960
+BM_MakeSharedStdString                  5315 ns         5314 ns       130625
+```
+
+Results on _Intel(R) Core(TM) i5-3470 CPU @ 3.20GHz_ with
+-DCMAKE_TOOLCHAIN_FILE="devel/toolchain-**gcc**.cmake" -DBENCHMARK_ENABLE_LTO=true -DCMAKE_BUILD_TYPE=Release:
+
+```
+CPU Caches:
+  L1 Data 32 KiB (x4)
+  L1 Instruction 32 KiB (x4)
+  L2 Unified 256 KiB (x4)
+  L3 Unified 6144 KiB (x1)
+----------------------------------------------------------------------------
+Benchmark                                  Time             CPU   Iterations
+----------------------------------------------------------------------------
+BM_VarSizedUniqueString                 1517 ns         1517 ns       461315
+BM_VarSizedSharedString                 2552 ns         2552 ns       275468
+BM_VarSizedRefCountedString             1572 ns         1572 ns       446478
+BM_VarSizedRefCountedSharedString       1574 ns         1574 ns       444534
+BM_MakeUniqueStdString                  3087 ns         3087 ns       227068
+BM_SharedStdString                      5262 ns         5262 ns       132952
+BM_MakeSharedStdString                  3947 ns         3947 ns       177140
+```
 
 ### Copy-on-Write
 
