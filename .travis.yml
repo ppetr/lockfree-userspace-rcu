@@ -31,5 +31,6 @@ jobs:
     - name: Address Sanitizer
       compiler: clang
       env:
-        - CXXFLAGS="-fsanitize=address -static-libasan -fno-omit-frame-pointer -O1"
+        - CXXFLAGS="-fsanitize=address -fno-omit-frame-pointer -O1"
         - RUN_HAVE_STD_REGEX=0
+      # https://github.com/google/sanitizers/wiki/AddressSanitizer
