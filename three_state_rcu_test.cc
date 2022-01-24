@@ -47,14 +47,35 @@ TEST(ThreeStateRcuTest, DoubleUpdateBetweenReads) {
   EXPECT_EQ(rcu.Update(), 0);
   // Set up a new value in `Update()`.
   rcu.Update() = 42;
-  EXPECT_TRUE(rcu.TriggerUpdate()) << "Read hasn't advanced yet";
+  EXPECT_TRUE(rcu.TriggerUpdate()) << "Read should have advanced";
   rcu.Update() = 73;
-  EXPECT_FALSE(rcu.TriggerUpdate()) << "Read hasn't advanced yet";
+  EXPECT_FALSE(rcu.TriggerUpdate()) << "Read shouldn't have advance";
   // Verify expectations before and after `TriggerRead()`.
-  EXPECT_NE(rcu.Update(), 73);
+  EXPECT_NE(rcu.Update(), 73)
+      << "Update should have overwritten the last value";
   EXPECT_EQ(rcu.Read(), 0);
   EXPECT_TRUE(rcu.TriggerRead());
   EXPECT_EQ(rcu.Read(), 73);
+}
+
+TEST(ThreeStateRcuTest, DoubleTryUpdateBetweenReads) {
+  ThreeStateRcu<int> rcu;
+  rcu.TriggerRead();
+  EXPECT_EQ(rcu.Read(), 0);
+  EXPECT_EQ(rcu.Update(), 0);
+  // Set up a new value in `Update()`.
+  rcu.Update() = 42;
+  EXPECT_TRUE(rcu.TryTriggerUpdate()) << "Read should have advanced";
+  rcu.Update() = 73;
+  EXPECT_FALSE(rcu.TryTriggerUpdate()) << "Read shouldn't have advanced";
+  // Verify expectations before and after `TriggerRead()`.
+  EXPECT_EQ(rcu.Update(), 73)
+      << "Update should not have overwritten the last value";
+  EXPECT_EQ(rcu.Read(), 0);
+  EXPECT_TRUE(rcu.TriggerRead());
+  EXPECT_EQ(rcu.Read(), 42);
+  EXPECT_FALSE(rcu.TriggerRead());
+  EXPECT_EQ(rcu.Read(), 42);
 }
 
 TEST(ThreeStateRcuTest, AlternatingUpdatesAndReads) {
@@ -69,6 +90,29 @@ TEST(ThreeStateRcuTest, AlternatingUpdatesAndReads) {
     rcu.Update() = i;
     ASSERT_FALSE(rcu.TriggerUpdate())
         << "The second trigger doesn't claim a value from the reader";
+    // Read.
+    EXPECT_EQ(rcu.Read(), -(i - 1))
+        << "Read() should still point to the previous value";
+    ASSERT_TRUE(rcu.TriggerRead());
+    EXPECT_EQ(rcu.Read(), i) << "Read() should now point to the new value";
+    ASSERT_FALSE(rcu.TriggerRead());
+    EXPECT_EQ(rcu.Read(), i) << "Read() should still point to the new value";
+    rcu.Read() = -i;
+  }
+}
+
+TEST(ThreeStateRcuTest, AlternatingTryUpdatesAndReads) {
+  ThreeStateRcu<int> rcu;
+  rcu.Read() = 1;  // Expected reclaimed value when the loop starts.
+  rcu.TriggerRead();
+  for (int i = 1; i <= 10; i++) {
+    SCOPED_TRACE(i);
+    rcu.Update() = i;
+    ASSERT_TRUE(rcu.TryTriggerUpdate()) << "Read should have advanced";
+    EXPECT_EQ(rcu.Update(), -(i - 2)) << "Reclaimed value";
+    rcu.Update() = -1;
+    ASSERT_FALSE(rcu.TryTriggerUpdate())
+        << "The second try-trigger should have failed";
     // Read.
     EXPECT_EQ(rcu.Read(), -(i - 1))
         << "Read() should still point to the previous value";

@@ -92,16 +92,32 @@ class ThreeStateRcu {
     Index old_next_read_index =
         next_read_index_.exchange(update_.index, std::memory_order_acq_rel);
     if (old_next_read_index == kNullIndex) {
-      // Rotation: update_.index -> next_read_index_ -> update_.next_index.
-      Index old_read_index = (0 + 1 + 2) - (update_.index + update_.next_index);
-      update_.next_index = update_.index;
-      update_.index = old_read_index;  // To be reclaimed.
+      update_.RotateAfterNext();
       return true;
     } else {
       // The reader hasn't advanced yet.
       // This is just a swap of update_index_ and next_read_index_.
       update_.next_index = update_.index;
       update_.index = old_next_read_index;
+      return false;
+    }
+  }
+
+  // Similar to `TriggerUpdate`, but triggers an update only if the reader has
+  // advanced and is waiting for a new value.
+  // In other words, never overwrites an update value that hasn't been seen by
+  // the reader.
+  // Returns `true` if an update was triggered and now `Update()` holds the
+  // reclaimed value from the reader. Otherwise returns `false`, which signals
+  // no action, in particular `Update()` points to the same value as before.
+  bool TryTriggerUpdate() {
+    Index old_next_read_index = kNullIndex;
+    if (next_read_index_.compare_exchange_strong(
+            old_next_read_index, update_.index, std::memory_order_acq_rel)) {
+      update_.RotateAfterNext();
+      return true;
+    } else {
+      // The reader hasn't advanced yet. Nothing to do.
       return false;
     }
   }
@@ -131,6 +147,14 @@ class ThreeStateRcu {
   } read_;
   // Accessed only by the "update" thread.
   struct {
+    // After `index` is pushed to `next_read_index_` above, rotate remaining
+    // indices: next_index <- index <- old read index.
+    inline void RotateAfterNext() {
+      Index old_read_index = (0 + 1 + 2) - (index + next_index);
+      next_index = index;
+      index = old_read_index;  // To be reclaimed.
+    }
+
     // The updater thread can manipulate the value at this index.
     Index index;
     // The last known value of `next_read_index_` known to the updater thread.
