@@ -1,4 +1,4 @@
-# Copyright 2020 Google LLC
+# Copyright 2022 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL
     "Disable Benchmark library tests")
 set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "")
 
-project(refcounted-var-sized CXX)
+project(simple-rcu CXX)
 
 add_subdirectory(abseil-cpp)
 
@@ -36,32 +36,14 @@ add_subdirectory(benchmark EXCLUDE_FROM_ALL)
 
 # Var-sized and ref-counted structures.
 
-add_library(ref INTERFACE)
-target_include_directories(ref INTERFACE .)
-target_link_libraries(ref INTERFACE absl::base absl::utility absl::variant)
+add_library(three_state_rcu INTERFACE)
+target_include_directories(three_state_rcu INTERFACE .)
+#target_link_libraries(three_state_rcu INTERFACE absl::...)
 
-add_executable(ref_test ref_test.cc)
-target_link_libraries(ref_test absl::utility absl::variant gtest_main)
-add_test(NAME ref_test COMMAND ref_test)
+add_executable(three_state_rcu_test three_state_rcu_test.cc)
+target_link_libraries(three_state_rcu_test gtest_main)
+add_test(NAME three_state_rcu_test COMMAND three_state_rcu_test)
 
-add_library(var_sized INTERFACE)
-target_include_directories(var_sized INTERFACE .)
-target_link_libraries(var_sized INTERFACE ref)
-
-add_executable(var_sized_test var_sized_test.cc)
-target_link_libraries(var_sized_test var_sized absl::strings gtest_main)
-add_test(NAME var_sized_test COMMAND var_sized_test)
-
-add_executable(var_sized_benchmark var_sized_benchmark.cc)
-target_link_libraries(var_sized_benchmark var_sized absl::memory benchmark::benchmark_main)
-add_test(NAME var_sized_benchmark COMMAND var_sized_benchmark)
-
-# Copy on Write.
-
-add_library(copy_on_write INTERFACE)
-target_include_directories(copy_on_write INTERFACE .)
-target_link_libraries(copy_on_write INTERFACE ref absl::utility)
-
-add_executable(copy_on_write_test copy_on_write_test.cc)
-target_link_libraries(copy_on_write_test copy_on_write absl::strings absl::utility gtest_main)
-add_test(NAME copy_on_write_test COMMAND copy_on_write_test)
+#add_executable(three_state_rcu_benchmark three_state_rcu_benchmark.cc)
+#target_link_libraries(three_state_rcu_benchmark three_state_rcu absl::... benchmark::benchmark_main)
+#add_test(NAME three_state_rcu_benchmark COMMAND three_state_rcu_benchmark)
