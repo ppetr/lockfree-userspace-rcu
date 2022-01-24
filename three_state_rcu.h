@@ -66,7 +66,8 @@ class ThreeStateRcu {
   // Returns `false` otherwise, that is, there is no new value available and
   // the reference pointed to by `Read()` remains unchanged.
   bool TriggerRead() {
-    Index next_read_index = next_read_index_.exchange(kNullIndex);
+    Index next_read_index =
+        next_read_index_.exchange(kNullIndex, std::memory_order_acq_rel);
     if (next_read_index != kNullIndex) {
       read_.index = next_read_index;
       return true;
@@ -88,7 +89,8 @@ class ThreeStateRcu {
   // In both cases any previous reference obtained by `Update()` is
   // invalidated.
   bool TriggerUpdate() {
-    Index old_next_read_index = next_read_index_.exchange(update_.index);
+    Index old_next_read_index =
+        next_read_index_.exchange(update_.index, std::memory_order_acq_rel);
     if (old_next_read_index == kNullIndex) {
       // Rotation: update_.index -> next_read_index_ -> update_.next_index.
       Index old_read_index = (0 + 1 + 2) - (update_.index + update_.next_index);
