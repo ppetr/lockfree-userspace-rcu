@@ -60,8 +60,11 @@ class ThreeStateRcu {
   T& Read() { return values_[read_.index]; }
 
   // Signal that the reader thread is ready to consume a new value.
-  // Returns `true` if `Read()` now points to such a new value.
-  // Returns `false` otherwise, that is, there is no new value available.
+  //
+  // Returns `true` if `Read()` now points to such a new value, invalidating
+  // any previous reference obtained from `Read()`.
+  // Returns `false` otherwise, that is, there is no new value available and
+  // the reference pointed to by `Read()` remains unchanged.
   bool TriggerRead() {
     Index next_read_index = next_read_index_.exchange(kNullIndex);
     if (next_read_index != kNullIndex) {
@@ -77,9 +80,13 @@ class ThreeStateRcu {
 
   // Makes the value stored in `Update()` available to the reader and changes
   // `Update()` to point to a value to be updated next.
+  //
   // Returns `true` iff `Update()` now points to a value used by the reader
   // that should be reclaimed. Otherwise `Update()` points to a previous update
   // value that hasn't been (and won't ever be) seen by the reader.
+  //
+  // In both cases any previous reference obtained by `Update()` is
+  // invalidated.
   bool TriggerUpdate() {
     Index old_next_read_index = next_read_index_.exchange(update_.index);
     if (old_next_read_index == kNullIndex) {
@@ -101,16 +108,30 @@ class ThreeStateRcu {
   using Index = int_fast8_t;
   static constexpr Index kNullIndex = -1;
 
+  // Storage for instances of `T` that are juggled around between the reader
+  // and updater threads.
+  // All the variables below are indices into `values_`, that is, from set
+  // {0, 1, 2}.
   std::array<T, 3> values_;
+  // If `kNullIndex`, there is no new value available to the reader thread.
+  // Invariants in this case:
+  //  read_.index == update_.next_index != update_.index
+  // Otherwise it contains the index holding a new value available to the
+  // reader.
+  // Invariants in this case:
+  //  * {read_.index, update_.index, update_.next_index} = {0, 1, 2}
+  //  * next_read_index_.load() == update_.next_index
   std::atomic<Index> next_read_index_;
-  // Accessed only by the "read" thread.
+  // Accessed only by the "read" thread:
   struct {
+    // The reader thread can manipulate the value at this index.
     Index index;
   } read_;
   // Accessed only by the "update" thread.
   struct {
+    // The updater thread can manipulate the value at this index.
     Index index;
-    // The last known `read_.index` before it advanced to `next_read_index_`.
+    // The last known value of `next_read_index_` known to the updater thread.
     Index next_index;
   } update_;
 };
