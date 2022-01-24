@@ -91,6 +91,7 @@ class ThreeStateRcu {
     } else {
       // The reader hasn't advanced yet.
       // This is just a swap of update_index_ and next_read_index_.
+      update_.next_index = update_.index;
       update_.index = old_next_read_index;
       return false;
     }
