@@ -36,14 +36,14 @@ add_subdirectory(benchmark EXCLUDE_FROM_ALL)
 
 # Var-sized and ref-counted structures.
 
-add_library(three_state_rcu INTERFACE)
-target_include_directories(three_state_rcu INTERFACE .)
-#target_link_libraries(three_state_rcu INTERFACE absl::...)
+add_library(local_3state_rcu INTERFACE)
+target_include_directories(local_3state_rcu INTERFACE .)
+#target_link_libraries(local_3state_rcu INTERFACE absl::...)
 
-add_executable(three_state_rcu_test three_state_rcu_test.cc)
-target_link_libraries(three_state_rcu_test gtest_main)
-add_test(NAME three_state_rcu_test COMMAND three_state_rcu_test)
+add_executable(local_3state_rcu_test local_3state_rcu_test.cc)
+target_link_libraries(local_3state_rcu_test gtest_main)
+add_test(NAME local_3state_rcu_test COMMAND local_3state_rcu_test)
 
-#add_executable(three_state_rcu_benchmark three_state_rcu_benchmark.cc)
-#target_link_libraries(three_state_rcu_benchmark three_state_rcu absl::... benchmark::benchmark_main)
-#add_test(NAME three_state_rcu_benchmark COMMAND three_state_rcu_benchmark)
+#add_executable(local_3state_rcu_benchmark local_3state_rcu_benchmark.cc)
+#target_link_libraries(local_3state_rcu_benchmark local_3state_rcu absl::... benchmark::benchmark_main)
+#add_test(NAME local_3state_rcu_benchmark COMMAND local_3state_rcu_benchmark)

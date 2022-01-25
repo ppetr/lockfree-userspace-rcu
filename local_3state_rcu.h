@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef _SIMPLE_RCU_THREE_STATE_RCU_H
-#define _SIMPLE_RCU_THREE_STATE_RCU_H
+#ifndef _SIMPLE_RCU_LOCAL_3STATE_RCU_H
+#define _SIMPLE_RCU_LOCAL_3STATE_RCU_H
 
 #include <array>
 #include <atomic>
 
 namespace simple_rcu {
 
-// Provides a RCU framework between two threads:
+// Provides a RCU framework between two threads (hence "Local"):
 //
 // - Reader, which consumes values provided by the Updater, and which is
 //   expected to be very fast.
@@ -29,28 +29,30 @@ namespace simple_rcu {
 //
 // Contract:
 // - A value written to `Update()` and submitted by `TriggerUpdate()` is then
-//   seen by the reader thread in `Read()` after one or more invocations of
-//   `TriggerRead()`.
-// - A value abandoned in `Read()` after next `TriggerRead() == true` is then
-//   seen by the updater thread in `Update()` after its next invocation of
-//   `TriggerUpdate()`.
-//
-// Note that the reader can modify the value as well. Changes to instances of
-// `T` propagate in both directions. The asymetry between the reader and the
-// updater is that the reader always sees the most recent value provided by
-// the updater, which can remain the same after multiple invocations of
-// `TriggerRead()`.
+//   seen by the reader thread in `Read()` after it calls `TriggerRead()`.
+// - While there are no new calls to `TriggerUpdate()`, calls to
+//   `TriggerRead()` are idemponent - `Read()` continues to return the same
+//   value.
+// - A value written to (or just abandoned in) `Read()` and submitted by
+//   `TriggerRead()' that returns `true`, is then seen by the updater thread in
+//   `Update()` after it calls `TriggerUpdate()`. The updater thread then can
+//   do any cleanups needed and overwrite the value to be submitted by the next
+//   call of `TriggerUpdate()`.
+//   Unlike the previous case, calls to `TriggerUpdate()` aren't idempotent -
+//   there is an asymetry between the reader and the updater, even though both
+//   can modify values: Calls to `TriggerUpdate` always submit a new value,
+//   even if the previous one hasn't been seen by the reader thread yet.
 //
 // Internally the class manages 3 instances of `T`: One for `Read()`, one for
 // `Update()` and one that is "in flight" in between the two threads.
 //
 // The implementation uses only atomic operations and does no memory
 // allocations on its own - it only "juggles" the 3 instances of `T`
-// internally between the threads.
+// internally between the two threads.
 template <typename T>
-class ThreeStateRcu {
+class Local3StateRcu {
  public:
-  ThreeStateRcu()
+  Local3StateRcu()
       : values_{T(), T(), T()},
         next_read_index_(1),
         read_{.index = 0},
@@ -164,4 +166,4 @@ class ThreeStateRcu {
 
 }  // namespace simple_rcu
 
-#endif  // _SIMPLE_RCU_THREE_STATE_RCU_H
+#endif  // _SIMPLE_RCU_LOCAL_3STATE_RCU_H

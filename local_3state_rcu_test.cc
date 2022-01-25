@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "three_state_rcu.h"
+#include "local_3state_rcu.h"
 
 #include "gtest/gtest.h"
 
 namespace simple_rcu {
 namespace {
 
-TEST(ThreeStateRcuTest, UpdateAndRead) {
-  ThreeStateRcu<int> rcu;
+TEST(Local3StateRcuTest, UpdateAndRead) {
+  Local3StateRcu<int> rcu;
   // Set up a new value in `Update()`.
   EXPECT_NE(&rcu.Update(), &rcu.Read())
       << "Update and Read must never point to the same object";
@@ -40,8 +40,8 @@ TEST(ThreeStateRcuTest, UpdateAndRead) {
   EXPECT_EQ(rcu.Read(), 42);
 }
 
-TEST(ThreeStateRcuTest, DoubleUpdateBetweenReads) {
-  ThreeStateRcu<int> rcu;
+TEST(Local3StateRcuTest, DoubleUpdateBetweenReads) {
+  Local3StateRcu<int> rcu;
   rcu.TriggerRead();
   EXPECT_EQ(rcu.Read(), 0);
   EXPECT_EQ(rcu.Update(), 0);
@@ -58,8 +58,8 @@ TEST(ThreeStateRcuTest, DoubleUpdateBetweenReads) {
   EXPECT_EQ(rcu.Read(), 73);
 }
 
-TEST(ThreeStateRcuTest, DoubleTryUpdateBetweenReads) {
-  ThreeStateRcu<int> rcu;
+TEST(Local3StateRcuTest, DoubleTryUpdateBetweenReads) {
+  Local3StateRcu<int> rcu;
   rcu.TriggerRead();
   EXPECT_EQ(rcu.Read(), 0);
   EXPECT_EQ(rcu.Update(), 0);
@@ -78,8 +78,8 @@ TEST(ThreeStateRcuTest, DoubleTryUpdateBetweenReads) {
   EXPECT_EQ(rcu.Read(), 42);
 }
 
-TEST(ThreeStateRcuTest, AlternatingUpdatesAndReads) {
-  ThreeStateRcu<int> rcu;
+TEST(Local3StateRcuTest, AlternatingUpdatesAndReads) {
+  Local3StateRcu<int> rcu;
   rcu.Read() = 1;  // Expected reclaimed value when the loop starts.
   rcu.TriggerRead();
   for (int i = 1; i <= 10; i++) {
@@ -101,8 +101,8 @@ TEST(ThreeStateRcuTest, AlternatingUpdatesAndReads) {
   }
 }
 
-TEST(ThreeStateRcuTest, AlternatingTryUpdatesAndReads) {
-  ThreeStateRcu<int> rcu;
+TEST(Local3StateRcuTest, AlternatingTryUpdatesAndReads) {
+  Local3StateRcu<int> rcu;
   rcu.Read() = 1;  // Expected reclaimed value when the loop starts.
   rcu.TriggerRead();
   for (int i = 1; i <= 10; i++) {
