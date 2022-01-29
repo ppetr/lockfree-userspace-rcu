@@ -58,12 +58,13 @@ class Rcu {
   class Local final {
    public:
     // Thread-safe.
-    Local(Rcu& rcu) : rcu_(rcu), read_depth_(0), local_rcu_() {
+    Local(Rcu& rcu) LOCKS_EXCLUDED(rcu.lock_)
+        : rcu_(rcu), read_depth_(0), local_rcu_() {
       absl::MutexLock mutex(&rcu_.lock_);
       rcu_.threads_.insert(this);
       Update(rcu_.value_);
     }
-    ~Local() {
+    ~Local() LOCKS_EXCLUDED(rcu_.lock_) {
       absl::MutexLock mutex(&rcu_.lock_);
       rcu_.threads_.erase(this);
     }
@@ -75,7 +76,7 @@ class Rcu {
 
    private:
     // Thread-compatible.
-    void Update(T value) {
+    void Update(T value) EXCLUSIVE_LOCKS_REQUIRED(rcu_.lock_) {
       std::swap(local_rcu_.Update(), value);
       local_rcu_.TriggerUpdate();
       // As a small performance optimization, destroy old `value` only after
@@ -106,7 +107,7 @@ class Rcu {
   // that have no `Local` instance at all.
   //
   // Thread-safe.
-  T Update(T value) {
+  T Update(T value) LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
     std::swap(value_, value);
     for (Local* thread : threads_) {
