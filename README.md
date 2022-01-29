@@ -38,7 +38,7 @@ when there are multiple concurrent readers, updates become slower, since they
 need to distribute values to the readers' thread-local copies.
 
 <dl>
-<dt>`g++` on Core i5:</dt>
+<dt><code>g++</code> on Core i5:</dt>
 <dd>
 <pre>
 Run on (4 X 2071.44 MHz CPU s)
@@ -64,7 +64,7 @@ BM_Updates/4/threads:2        338 ns          359 ns      1461652
 BM_Updates/4/threads:3        420 ns          522 ns      1469535
 </pre>
 </dd>
-<dt>`clang++11` on Core i5:</dt>
+<dt><code>clang++11</code> on Core i5:</dt>
 <dd>
 <pre>
 Run on (4 X 1861.48 MHz CPU s)
