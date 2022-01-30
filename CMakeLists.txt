@@ -34,24 +34,5 @@ add_subdirectory(googletest EXCLUDE_FROM_ALL)
 # See https://github.com/google/benchmark#debug-vs-release.
 add_subdirectory(benchmark EXCLUDE_FROM_ALL)
 
-# Var-sized and ref-counted structures.
-
-add_library(local_3state_rcu INTERFACE)
-target_include_directories(local_3state_rcu INTERFACE .)
-#target_link_libraries(local_3state_rcu INTERFACE absl::...)
-
-add_executable(local_3state_rcu_test local_3state_rcu_test.cc)
-target_link_libraries(local_3state_rcu_test gtest_main)
-add_test(NAME local_3state_rcu_test COMMAND local_3state_rcu_test)
-
-add_library(rcu INTERFACE)
-target_include_directories(rcu INTERFACE .)
-target_link_libraries(rcu INTERFACE local_3state_rcu absl::flat_hash_set absl::synchronization atomic)
-
-add_executable(rcu_test rcu_test.cc)
-target_link_libraries(rcu_test rcu gtest_main)
-add_test(NAME rcu_test COMMAND rcu_test)
-
-add_executable(rcu_benchmark rcu_benchmark.cc)
-target_link_libraries(rcu_benchmark rcu benchmark::benchmark_main)
-add_test(NAME rcu_benchmark COMMAND rcu_benchmark)
+include_directories(${PROJECT_SOURCE_DIR})
+add_subdirectory(simple_rcu)

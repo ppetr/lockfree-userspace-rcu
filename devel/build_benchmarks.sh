@@ -28,4 +28,4 @@ for TOOLCHAIN in clang11 gcc ; do
   make -j all
 done
 cd "$BASE"
-ls -l build/rel-*/*_benchmark
+ls -l build/rel-*/simple_rcu/*_benchmark

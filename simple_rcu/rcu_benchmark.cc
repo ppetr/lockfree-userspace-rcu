@@ -17,7 +17,7 @@
 #include <thread>
 
 #include "benchmark/benchmark.h"
-#include "rcu.h"
+#include "simple_rcu/rcu.h"
 
 namespace simple_rcu {
 namespace {
