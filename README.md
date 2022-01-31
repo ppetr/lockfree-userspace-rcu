@@ -1,15 +1,26 @@
-# Simple and fast user-space RCU library
+# Simple and fast user-space [RCU] (Read-Copy-Update) library
+
+[RCU]: https://en.wikipedia.org/wiki/Read-copy-update
 
 _*Disclaimer:* This is not an officially supported Google product._
 
-## Objectives
+## Usage
 
-- Create a simple and fast user-space C++
-[RCU](https://en.wikipedia.org/wiki/Read-copy-update) (Read-Copy-Update)
-library.
-- Build a lock-free metrics collection library upon it.
-- Eventually provide bindings and/or similar implementations in other
-  languages: Rust, Haskell, Python, Go, etc.
+```c++
+#include "simple_rcu/rcu.h"
+
+// Shared object that provides an instance of copyable `MyType`:
+Rcu<MyType> rcu;
+
+// Each reader thread creates a local accessor to `rcu`:
+Rcu<int>::Local local(rcu);
+// Any thread can atomically update the value:
+rcu.Update(MyType(...));
+// Afterwards a reader thread can fetch a reference to its new, updated copy:
+local.Read()->MethodOnMyType(...);
+```
+
+See [rcu_test.cc](simple_rcu/rcu_test.cc) for more examples.
 
 ## Dependencies
 
@@ -91,6 +102,12 @@ BM_Updates/4/threads:3        429 ns          491 ns      1630869
 </pre>
 </dd>
 </dl>
+
+## Further objectives
+
+- Build a lock-free metrics collection library upon it.
+- Eventually provide bindings and/or similar implementations in other
+  languages: Rust, Haskell, Python, Go, etc.
 
 ## Contributions
 
