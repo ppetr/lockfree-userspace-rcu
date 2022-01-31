@@ -11,14 +11,15 @@ namespace simple_rcu {
 // `T` must be copyable. Commonly it's `std::shared_ptr<const U>`.
 template <typename T>
 class Rcu {
-  static_assert(std::is_default_constructible<T>::value,
-                "T must be default constructible");
-  static_assert(std::is_copy_constructible<T>::value &&
-                    std::is_copy_assignable<T>::value,
-                "T must be copy constructible and assignable");
-
  public:
   class Local;
+  using MutableT = typename std::remove_const<T>::type;
+
+  static_assert(std::is_default_constructible<MutableT>::value,
+                "T must be default constructible");
+  static_assert(std::is_copy_constructible<MutableT>::value &&
+                    std::is_copy_assignable<MutableT>::value,
+                "T must be copy constructible and assignable");
 
   // Holds a read reference to a RCU value for the current thread.
   // The reference is guaranteed to be stable during the lifetime of `ReadRef`.
@@ -76,7 +77,7 @@ class Rcu {
 
    private:
     // Thread-compatible.
-    void Update(T value) EXCLUSIVE_LOCKS_REQUIRED(rcu_.lock_) {
+    void Update(MutableT value) EXCLUSIVE_LOCKS_REQUIRED(rcu_.lock_) {
       std::swap(local_rcu_.Update(), value);
       local_rcu_.TriggerUpdate();
       // As a small performance optimization, destroy old `value` only after
@@ -88,7 +89,7 @@ class Rcu {
     // invoked only for the outermost `ReadRef`, keeping its value unchanged
     // for its whole lifetime.
     int_fast16_t read_depth_;
-    Local3StateRcu<T> local_rcu_;
+    Local3StateRcu<MutableT> local_rcu_;
 
     friend class Rcu;
   };
@@ -107,7 +108,7 @@ class Rcu {
   // that have no `Local` instance at all.
   //
   // Thread-safe.
-  T Update(T value) LOCKS_EXCLUDED(lock_) {
+  T Update(typename std::remove_const<T>::type value) LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
     std::swap(value_, value);
     for (Local* thread : threads_) {
@@ -120,7 +121,7 @@ class Rcu {
   absl::Mutex lock_;
   // The current value that has been distributed to all thread-`Local`
   // instances.
-  T value_ GUARDED_BY(lock_);
+  MutableT value_ GUARDED_BY(lock_);
   // List of registered thread-`Local` instances.
   absl::flat_hash_set<Local*> threads_ GUARDED_BY(lock_);
 };

@@ -30,6 +30,13 @@ TEST(RcuTest, UpdateAndRead) {
       << "Thread registered after Update must also receive the value";
 }
 
+TEST(RcuTest, UpdateAndReadConst) {
+  Rcu<int const> rcu;
+  Rcu<int const>::Local local(rcu);
+  rcu.Update(42);
+  EXPECT_EQ(*local.Read(), 42) << "Reader thread must receive a correct value";
+}
+
 TEST(RcuTest, ThreadLocalUpdateAndRead) {
   static Rcu<int> rcu;
   static thread_local Rcu<int>::Local local(rcu);
