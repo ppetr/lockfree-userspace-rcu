@@ -31,8 +31,8 @@ TEST(RcuTest, UpdateAndRead) {
 }
 
 TEST(RcuTest, UpdateAndReadConst) {
-  Rcu<int const> rcu;
-  Rcu<int const>::Local local(rcu);
+  Rcu<const int> rcu;
+  Rcu<const int>::Local local(rcu);
   rcu.Update(42);
   EXPECT_EQ(*local.Read(), 42) << "Reader thread must receive a correct value";
 }
