@@ -20,6 +20,12 @@ namespace simple_rcu {
 template <typename T>
 class ReverseRcu {
  public:
+  static_assert(std::is_default_constructible<T>::value,
+                "T must be default constructible");
+  static_assert(std::is_move_constructible<T>::value &&
+                    std::is_move_assignable<T>::value,
+                "T must be move constructible and assignable");
+
   class Local;
 
   // Holds a read reference to a RCU value for the current thread.
@@ -85,8 +91,8 @@ class ReverseRcu {
 
     ReverseRcu& rcu_;
     // Incremented with each `WriteRef` instance. Ensures that `TriggerRead` is
-    // invoked only for the outermost `WriteRef`, keeping its value unchanged
-    // for its whole lifetime.
+    // invoked only after the outermost `WriteRef` is destroyed, keeping
+    // the reference unchanged for its whole lifetime.
     int_fast16_t read_depth_;
     Local3StateRcu<T> local_rcu_;
 
@@ -115,7 +121,7 @@ class ReverseRcu {
 
  private:
   absl::Mutex lock_;
-  // The current value that has been distributed to all thread-`Local`
+  // The current value that has been collected from all thread-`Local`
   // instances.
   T value_ GUARDED_BY(lock_);
   // List of registered thread-`Local` instances.

@@ -34,7 +34,7 @@ add_test(NAME rcu_benchmark COMMAND rcu_benchmark)
 
 add_library(reverse_rcu INTERFACE)
 target_include_directories(reverse_rcu INTERFACE .)
-target_link_libraries(reverse_rcu INTERFACE local_3state_rcu absl::flat_hash_set absl::synchronization atomic)
+target_link_libraries(reverse_rcu INTERFACE local_3state_rcu absl::flat_hash_set absl::synchronization absl::utility atomic)
 
 add_executable(reverse_rcu_test reverse_rcu_test.cc)
 target_link_libraries(reverse_rcu_test reverse_rcu gtest_main)
