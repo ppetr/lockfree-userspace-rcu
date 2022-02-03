@@ -28,20 +28,20 @@ class ReverseRcu {
 
   class Local;
 
-  // Holds a read reference to a RCU value for the current thread.
-  // The reference is guaranteed to be stable during the lifetime of `WriteRef`.
-  // Callers are expected to limit the lifetime of `WriteRef` to as short as
+  // Holds a (write) reference to a RCU value for the current thread.
+  // The reference is guaranteed to be stable during the lifetime of `Snapshot`.
+  // Callers are expected to limit the lifetime of `Snapshot` to as short as
   // possible.
   // Thread-compatible (but not thread-safe), reentrant.
-  class WriteRef final {
+  class Snapshot final {
    public:
-    WriteRef(WriteRef&& other) noexcept : WriteRef(other.registrar_) {}
-    WriteRef(const WriteRef& other) noexcept : WriteRef(other.registrar_) {}
-    WriteRef& operator=(WriteRef&&) = delete;
-    WriteRef& operator=(const WriteRef&) = delete;
+    Snapshot(Snapshot&& other) noexcept : Snapshot(other.registrar_) {}
+    Snapshot(const Snapshot& other) noexcept : Snapshot(other.registrar_) {}
+    Snapshot& operator=(Snapshot&&) = delete;
+    Snapshot& operator=(const Snapshot&) = delete;
 
-    ~WriteRef() noexcept {
-      if (--registrar_.read_depth_ == 0) {
+    ~Snapshot() noexcept {
+      if (--registrar_.snapshot_depth_ == 0) {
         registrar_.local_rcu_.TriggerRead();
       }
     }
@@ -50,8 +50,8 @@ class ReverseRcu {
     T& operator*() noexcept { return registrar_.local_rcu_.Read(); }
 
    private:
-    WriteRef(Local& registrar) noexcept : registrar_(registrar) {
-      registrar_.read_depth_++;
+    Snapshot(Local& registrar) noexcept : registrar_(registrar) {
+      registrar_.snapshot_depth_++;
     }
 
     Local& registrar_;
@@ -67,7 +67,7 @@ class ReverseRcu {
    public:
     // Thread-safe.
     Local(ReverseRcu& rcu) LOCKS_EXCLUDED(rcu.lock_)
-        : rcu_(rcu), read_depth_(0), local_rcu_() {
+        : rcu_(rcu), snapshot_depth_(0), local_rcu_() {
       absl::MutexLock mutex(&rcu_.lock_);
       rcu_.threads_.insert(this);
     }
@@ -77,10 +77,10 @@ class ReverseRcu {
       rcu_.threads_.erase(this);
     }
 
-    // Obtains a read snapshot to the current value held by the RCU.
+    // Obtains a write snapshot to the local value to be collected by the RCU.
     // This is a very fast, lock-free and atomic operation.
     // Thread-compatible, but not thread-safe.
-    WriteRef Write() noexcept { return WriteRef(*this); }
+    Snapshot Write() noexcept { return Snapshot(*this); }
 
    private:
     // Thread-compatible.
@@ -90,10 +90,10 @@ class ReverseRcu {
     }
 
     ReverseRcu& rcu_;
-    // Incremented with each `WriteRef` instance. Ensures that `TriggerRead` is
-    // invoked only after the outermost `WriteRef` is destroyed, keeping
+    // Incremented with each `Snapshot` instance. Ensures that `TriggerRead` is
+    // invoked only after the outermost `Snapshot` is destroyed, keeping
     // the reference unchanged for its whole lifetime.
-    int_fast16_t read_depth_;
+    int_fast16_t snapshot_depth_;
     Local3StateRcu<T> local_rcu_;
 
     friend class ReverseRcu;
