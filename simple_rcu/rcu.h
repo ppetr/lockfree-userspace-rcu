@@ -28,20 +28,22 @@ class Rcu {
   // Thread-compatible (but not thread-safe), reentrant.
   class ReadRef final {
    public:
-    ReadRef(ReadRef&& other) : ReadRef(other.registrar_) {}
-    ReadRef(const ReadRef& other) : ReadRef(other.registrar_) {}
+    ReadRef(ReadRef&& other) noexcept : ReadRef(other.registrar_) {}
+    ReadRef(const ReadRef& other) noexcept : ReadRef(other.registrar_) {}
     ReadRef& operator=(ReadRef&&) = delete;
     ReadRef& operator=(const ReadRef&) = delete;
 
-    ~ReadRef() { registrar_.read_depth_--; }
+    ~ReadRef() noexcept { registrar_.read_depth_--; }
 
-    const T* operator->() const { return &**this; }
-    T* operator->() { return &**this; }
-    const T& operator*() const { return *registrar_.local_rcu_.Read(); }
-    T& operator*() { return registrar_.local_rcu_.Read(); }
+    const T* operator->() const noexcept { return &**this; }
+    T* operator->() noexcept { return &**this; }
+    const T& operator*() const noexcept {
+      return *registrar_.local_rcu_.Read();
+    }
+    T& operator*() noexcept { return registrar_.local_rcu_.Read(); }
 
    private:
-    ReadRef(Local& registrar) : registrar_(registrar) {
+    ReadRef(Local& registrar) noexcept : registrar_(registrar) {
       if (registrar_.read_depth_++ == 0) {
         registrar_.local_rcu_.TriggerRead();
       }
@@ -73,7 +75,7 @@ class Rcu {
     // Obtains a read snapshot to the current value held by the RCU.
     // This is a very fast, lock-free and atomic operation.
     // Thread-compatible, but not thread-safe.
-    ReadRef Read() { return ReadRef(*this); }
+    ReadRef Read() noexcept { return ReadRef(*this); }
 
    private:
     // Thread-compatible.

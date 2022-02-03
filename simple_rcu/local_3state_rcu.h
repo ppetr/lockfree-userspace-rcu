@@ -57,9 +57,10 @@ class Local3StateRcu {
         next_read_index_(1),
         read_{.index = 0},
         update_{.index = 2, .next_index = 1} {}
+  ~Local3StateRcu() noexcept = default;
 
   // Reference to the value that can be manipulated by the reading thread.
-  T& Read() { return values_[read_.index]; }
+  T& Read() noexcept { return values_[read_.index]; }
 
   // Signal that the reader thread is ready to consume a new value.
   //
@@ -67,7 +68,7 @@ class Local3StateRcu {
   // any previous reference obtained from `Read()`.
   // Returns `false` otherwise, that is, there is no new value available and
   // the reference pointed to by `Read()` remains unchanged.
-  bool TriggerRead() {
+  bool TriggerRead() noexcept {
     Index next_read_index =
         next_read_index_.exchange(kNullIndex, std::memory_order_acq_rel);
     if (next_read_index != kNullIndex) {
@@ -79,7 +80,7 @@ class Local3StateRcu {
   }
 
   // Reference to the value that can be manipulated by the updating thread.
-  T& Update() { return values_[update_.index]; }
+  T& Update() noexcept { return values_[update_.index]; }
 
   // Makes the value stored in `Update()` available to the reader and changes
   // `Update()` to point to a value to be updated next.
@@ -90,7 +91,7 @@ class Local3StateRcu {
   //
   // In both cases any previous reference obtained by `Update()` is
   // invalidated.
-  bool TriggerUpdate() {
+  bool TriggerUpdate() noexcept {
     Index old_next_read_index =
         next_read_index_.exchange(update_.index, std::memory_order_acq_rel);
     if (old_next_read_index == kNullIndex) {
@@ -112,7 +113,7 @@ class Local3StateRcu {
   // Returns `true` if an update was triggered and now `Update()` holds the
   // reclaimed value from the reader. Otherwise returns `false`, which signals
   // no action, in particular `Update()` points to the same value as before.
-  bool TryTriggerUpdate() {
+  bool TryTriggerUpdate() noexcept {
     Index old_next_read_index = kNullIndex;
     if (next_read_index_.compare_exchange_strong(
             old_next_read_index, update_.index, std::memory_order_acq_rel)) {
@@ -151,7 +152,7 @@ class Local3StateRcu {
   struct {
     // After `index` is pushed to `next_read_index_` above, rotate remaining
     // indices: next_index <- index <- old read index.
-    inline void RotateAfterNext() {
+    inline void RotateAfterNext() noexcept {
       Index old_read_index = (0 + 1 + 2) - (index + next_index);
       next_index = index;
       index = old_read_index;  // To be reclaimed.

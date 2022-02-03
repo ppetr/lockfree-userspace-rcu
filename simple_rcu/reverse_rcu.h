@@ -35,22 +35,22 @@ class ReverseRcu {
   // Thread-compatible (but not thread-safe), reentrant.
   class WriteRef final {
    public:
-    WriteRef(WriteRef&& other) : WriteRef(other.registrar_) {}
-    WriteRef(const WriteRef& other) : WriteRef(other.registrar_) {}
+    WriteRef(WriteRef&& other) noexcept : WriteRef(other.registrar_) {}
+    WriteRef(const WriteRef& other) noexcept : WriteRef(other.registrar_) {}
     WriteRef& operator=(WriteRef&&) = delete;
     WriteRef& operator=(const WriteRef&) = delete;
 
-    ~WriteRef() {
+    ~WriteRef() noexcept {
       if (--registrar_.read_depth_ == 0) {
         registrar_.local_rcu_.TriggerRead();
       }
     }
 
-    T* operator->() { return &**this; }
-    T& operator*() { return registrar_.local_rcu_.Read(); }
+    T* operator->() noexcept { return &**this; }
+    T& operator*() noexcept { return registrar_.local_rcu_.Read(); }
 
    private:
-    WriteRef(Local& registrar) : registrar_(registrar) {
+    WriteRef(Local& registrar) noexcept : registrar_(registrar) {
       registrar_.read_depth_++;
     }
 
@@ -80,7 +80,7 @@ class ReverseRcu {
     // Obtains a read snapshot to the current value held by the RCU.
     // This is a very fast, lock-free and atomic operation.
     // Thread-compatible, but not thread-safe.
-    WriteRef Write() { return WriteRef(*this); }
+    WriteRef Write() noexcept { return WriteRef(*this); }
 
    private:
     // Thread-compatible.
