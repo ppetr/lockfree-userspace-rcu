@@ -22,18 +22,18 @@ class Rcu {
                 "T must be copy constructible and assignable");
 
   // Holds a read reference to a RCU value for the current thread.
-  // The reference is guaranteed to be stable during the lifetime of `ReadRef`.
-  // Callers are expected to limit the lifetime of `ReadRef` to as short as
+  // The reference is guaranteed to be stable during the lifetime of `Snapshot`.
+  // Callers are expected to limit the lifetime of `Snapshot` to as short as
   // possible.
   // Thread-compatible (but not thread-safe), reentrant.
-  class ReadRef final {
+  class Snapshot final {
    public:
-    ReadRef(ReadRef&& other) noexcept : ReadRef(other.registrar_) {}
-    ReadRef(const ReadRef& other) noexcept : ReadRef(other.registrar_) {}
-    ReadRef& operator=(ReadRef&&) = delete;
-    ReadRef& operator=(const ReadRef&) = delete;
+    Snapshot(Snapshot&& other) noexcept : Snapshot(other.registrar_) {}
+    Snapshot(const Snapshot& other) noexcept : Snapshot(other.registrar_) {}
+    Snapshot& operator=(Snapshot&&) = delete;
+    Snapshot& operator=(const Snapshot&) = delete;
 
-    ~ReadRef() noexcept { registrar_.read_depth_--; }
+    ~Snapshot() noexcept { registrar_.snapsnot_depth_--; }
 
     const T* operator->() const noexcept { return &**this; }
     T* operator->() noexcept { return &**this; }
@@ -43,8 +43,8 @@ class Rcu {
     T& operator*() noexcept { return registrar_.local_rcu_.Read(); }
 
    private:
-    ReadRef(Local& registrar) noexcept : registrar_(registrar) {
-      if (registrar_.read_depth_++ == 0) {
+    Snapshot(Local& registrar) noexcept : registrar_(registrar) {
+      if (registrar_.snapsnot_depth_++ == 0) {
         registrar_.local_rcu_.TriggerRead();
       }
     }
@@ -62,7 +62,7 @@ class Rcu {
    public:
     // Thread-safe.
     Local(Rcu& rcu) LOCKS_EXCLUDED(rcu.lock_)
-        : rcu_(rcu), read_depth_(0), local_rcu_() {
+        : rcu_(rcu), snapsnot_depth_(0), local_rcu_() {
       absl::MutexLock mutex(&rcu_.lock_);
       rcu_.threads_.insert(this);
       Update(rcu_.value_);
@@ -75,7 +75,7 @@ class Rcu {
     // Obtains a read snapshot to the current value held by the RCU.
     // This is a very fast, lock-free and atomic operation.
     // Thread-compatible, but not thread-safe.
-    ReadRef Read() noexcept { return ReadRef(*this); }
+    Snapshot Read() noexcept { return Snapshot(*this); }
 
    private:
     // Thread-compatible.
@@ -87,10 +87,10 @@ class Rcu {
     }
 
     Rcu& rcu_;
-    // Incremented with each `ReadRef` instance. Ensures that `TriggerRead` is
-    // invoked only for the outermost `ReadRef`, keeping its value unchanged
+    // Incremented with each `Snapshot` instance. Ensures that `TriggerRead` is
+    // invoked only for the outermost `Snapshot`, keeping its value unchanged
     // for its whole lifetime.
-    int_fast16_t read_depth_;
+    int_fast16_t snapsnot_depth_;
     Local3StateRcu<MutableT> local_rcu_;
 
     friend class Rcu;
@@ -103,7 +103,7 @@ class Rcu {
 
   // Updates `value` in all registered `Local` threads.
   // Returns the previous value. Note that the previous value can still be
-  // observed by readers that haven't obtained a fresh `ReadRef()` instance.
+  // observed by readers that haven't obtained a fresh `Snapshot` instance yet.
   //
   // This method isn't tied in any particular way to a `Local` instance
   // corresponding to the current thread, and can be called also by threads
