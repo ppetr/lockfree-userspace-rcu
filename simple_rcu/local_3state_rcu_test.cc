@@ -19,6 +19,11 @@
 namespace simple_rcu {
 namespace {
 
+TEST(Local3StateRcuTest, ConstructorArguments) {
+  Local3StateRcu<int_fast32_t> rcu(42);
+  EXPECT_EQ(rcu.Read(), 42);
+}
+
 TEST(Local3StateRcuTest, UpdateAndRead) {
   Local3StateRcu<int> rcu;
   // Set up a new value in `Update()`.

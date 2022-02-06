@@ -52,8 +52,12 @@ namespace simple_rcu {
 template <typename T>
 class Local3StateRcu {
  public:
-  Local3StateRcu()
-      : values_{T(), T(), T()},
+  // Builds an instance by initializing the internal `T` variables using given
+  // arguments. Since there are multiple instances of `T` to be built, `args`
+  // must be copyable.
+  template <typename... Args>
+  Local3StateRcu(Args... args)
+      : values_{T(args...), T(args...), T(args...)},
         next_read_index_(1),
         read_{.index = 0},
         update_{.index = 2, .next_index = 1} {}
