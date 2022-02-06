@@ -1,6 +1,8 @@
-# Simple and fast user-space [RCU] (Read-Copy-Update) library
+# Simple and fast user-space [RCU](Read-Copy-Update)[^1] library
 
 [RCU]: https://en.wikipedia.org/wiki/Read-copy-update
+
+[^1]: If you like RCU, you might also like [rCUP](https://circularandco.com/shop/reusables/circular-reusable-coffee-cup) - a reusable coffee cup made from recycled single-use paper cups.
 
 _*Disclaimer:* This is not an officially supported Google product._
 
