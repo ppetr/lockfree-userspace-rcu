@@ -52,15 +52,32 @@ namespace simple_rcu {
 template <typename T>
 class Local3StateRcu {
  public:
-  // Builds an instance by initializing the internal `T` variables using given
-  // arguments. Since there are multiple instances of `T` to be built, `args`
-  // must be copyable.
-  template <typename... Args>
-  Local3StateRcu(Args... args)
-      : values_{T(args...), T(args...), T(args...)},
-        next_read_index_(1),
+  // Builds an instance by initializing the internal three `T` variables to
+  // given values in the initial state:
+  //
+  // - `read` is the value that'll be available in `Read()`. `TriggerRead()`
+  //    will return `false`.
+  // - `update` is the value that'll be available in `Update()`.
+  //   `TriggerUpdate()` will return `true` and the value reclaimed afterwards
+  //   in `Update` will be `reclaimed`.
+  //
+  // `T` must be moveable.
+  Local3StateRcu(T read, T update, T reclaim)
+      : values_{std::move(read), std::move(update), std::move(reclaim)},
+        next_read_index_(kNullIndex),
         read_{.index = 0},
-        update_{.index = 2, .next_index = 1} {}
+        update_{.index = 1, .next_index = 0} {}
+  // Builds an instance by initializing the internal three `T` variables to a
+  // given single values. `T` must be copyable.
+  explicit Local3StateRcu(const T& value)
+      : Local3StateRcu(value, value, value) {}
+  // Builds an instance by initializing the internal three `T` variables to
+  // `T()`. `T` must be default-constructible.
+  Local3StateRcu()
+      : values_(),
+        next_read_index_(kNullIndex),
+        read_{.index = 0},
+        update_{.index = 1, .next_index = 0} {}
   ~Local3StateRcu() noexcept = default;
 
   // Reference to the value that can be manipulated by the reading thread.
@@ -119,8 +136,12 @@ class Local3StateRcu {
   // no action, in particular `Update()` points to the same value as before.
   bool TryTriggerUpdate() noexcept {
     Index old_next_read_index = kNullIndex;
+    // Use relaxed memory ordering on failure, since in this case there is no
+    // related observable memory access.
     if (next_read_index_.compare_exchange_strong(
-            old_next_read_index, update_.index, std::memory_order_acq_rel)) {
+            old_next_read_index, update_.index,
+            /*success=*/std::memory_order_acq_rel,
+            /*failure=*/std::memory_order_relaxed)) {
       update_.RotateAfterNext();
       return true;
     } else {

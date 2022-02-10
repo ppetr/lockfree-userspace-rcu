@@ -19,13 +19,19 @@
 namespace simple_rcu {
 namespace {
 
-TEST(Local3StateRcuTest, ConstructorArguments) {
+TEST(Local3StateRcuTest, ConstructorArgumentsAndInitialState) {
   Local3StateRcu<int_fast32_t> rcu(42);
   EXPECT_EQ(rcu.Read(), 42);
+  EXPECT_EQ(rcu.Update(), 42);
+  EXPECT_FALSE(rcu.TriggerRead())
+      << "Read shouldn't advance in an initial state";
+  ASSERT_TRUE(rcu.TriggerUpdate())
+      << "Update should advance in an initial state";
+  EXPECT_EQ(rcu.Update(), 42);
 }
 
-TEST(Local3StateRcuTest, UpdateAndRead) {
-  Local3StateRcu<int> rcu;
+TEST(Local3StateRcuTest, UpdateAndReadReferences) {
+  Local3StateRcu<int> rcu(0);
   // Set up a new value in `Update()`.
   EXPECT_NE(&rcu.Update(), &rcu.Read())
       << "Update and Read must never point to the same object";
@@ -33,7 +39,7 @@ TEST(Local3StateRcuTest, UpdateAndRead) {
   EXPECT_EQ(rcu.Read(), 0);
   rcu.Update() = 42;
   // Trigger.
-  EXPECT_FALSE(rcu.TriggerUpdate()) << "Read hasn't advanced yet";
+  EXPECT_TRUE(rcu.TriggerUpdate()) << "Update should advanced";
   // Verify expectations before and after `TriggerRead()`.
   EXPECT_NE(&rcu.Update(), &rcu.Read())
       << "Update and Read must never point to the same object";
@@ -46,15 +52,12 @@ TEST(Local3StateRcuTest, UpdateAndRead) {
 }
 
 TEST(Local3StateRcuTest, DoubleUpdateBetweenReads) {
-  Local3StateRcu<int> rcu;
-  rcu.TriggerRead();
-  EXPECT_EQ(rcu.Read(), 0);
-  EXPECT_EQ(rcu.Update(), 0);
+  Local3StateRcu<int> rcu(0);
   // Set up a new value in `Update()`.
   rcu.Update() = 42;
-  EXPECT_TRUE(rcu.TriggerUpdate()) << "Read should have advanced";
+  EXPECT_TRUE(rcu.TriggerUpdate()) << "Update should advance";
   rcu.Update() = 73;
-  EXPECT_FALSE(rcu.TriggerUpdate()) << "Read shouldn't have advance";
+  EXPECT_FALSE(rcu.TriggerUpdate()) << "Read shouldn't advance";
   // Verify expectations before and after `TriggerRead()`.
   EXPECT_NE(rcu.Update(), 73)
       << "Update should have overwritten the last value";
@@ -84,9 +87,7 @@ TEST(Local3StateRcuTest, DoubleTryUpdateBetweenReads) {
 }
 
 TEST(Local3StateRcuTest, AlternatingUpdatesAndReads) {
-  Local3StateRcu<int> rcu;
-  rcu.Read() = 1;  // Expected reclaimed value when the loop starts.
-  rcu.TriggerRead();
+  Local3StateRcu<int> rcu(/*read=*/0, /*update=*/-42, /*reclaim=*/1);
   for (int i = 1; i <= 10; i++) {
     SCOPED_TRACE(i);
     rcu.Update() = -1;  // Value that we'll overwrite later.
@@ -107,9 +108,7 @@ TEST(Local3StateRcuTest, AlternatingUpdatesAndReads) {
 }
 
 TEST(Local3StateRcuTest, AlternatingTryUpdatesAndReads) {
-  Local3StateRcu<int> rcu;
-  rcu.Read() = 1;  // Expected reclaimed value when the loop starts.
-  rcu.TriggerRead();
+  Local3StateRcu<int> rcu(/*read=*/0, /*update=*/-42, /*reclaim=*/1);
   for (int i = 1; i <= 10; i++) {
     SCOPED_TRACE(i);
     rcu.Update() = i;

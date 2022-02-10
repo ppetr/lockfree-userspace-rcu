@@ -68,6 +68,8 @@ class ReverseRcu {
     // Thread-safe.
     Local(ReverseRcu& rcu) LOCKS_EXCLUDED(rcu.lock_)
         : rcu_(rcu), snapshot_depth_(0), local_rcu_() {
+      // Allow `Snapshot` to `TriggerRead()` from the start.
+      local_rcu_.TriggerUpdate();
       absl::MutexLock mutex(&rcu_.lock_);
       rcu_.threads_.insert(this);
     }
