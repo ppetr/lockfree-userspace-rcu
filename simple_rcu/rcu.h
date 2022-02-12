@@ -45,7 +45,7 @@ class Rcu {
    private:
     Snapshot(Local& registrar) noexcept : registrar_(registrar) {
       if (registrar_.snapsnot_depth_++ == 0) {
-        registrar_.local_rcu_.TriggerRead();
+        registrar_.local_rcu_.TryRead();
       }
     }
 
@@ -81,13 +81,13 @@ class Rcu {
     // Thread-compatible.
     void Update(MutableT value) EXCLUSIVE_LOCKS_REQUIRED(rcu_.lock_) {
       std::swap(local_rcu_.Update(), value);
-      local_rcu_.TriggerUpdate();
+      local_rcu_.ForceUpdate();
       // As a small performance optimization, destroy old `value` only after
       // triggering update with the new value.
     }
 
     Rcu& rcu_;
-    // Incremented with each `Snapshot` instance. Ensures that `TriggerRead` is
+    // Incremented with each `Snapshot` instance. Ensures that `TryRead` is
     // invoked only for the outermost `Snapshot`, keeping its value unchanged
     // for its whole lifetime.
     int_fast16_t snapsnot_depth_;

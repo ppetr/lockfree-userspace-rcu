@@ -20,28 +20,27 @@
 
 namespace simple_rcu {
 
-// Provides a RCU framework between two threads (hence "Local"):
+// Provides a RCU-like framework to exchange values between just two threads
+// (hence "Local"):
 //
-// - Reader, which consumes values provided by the Updater, and which is
-//   expected to be very fast.
-// - Updater, which provides new values to be made available to the Reader,
-//   and which is expected to do the "heavy", slow updates of values.
+// - Reader, which accesses an instance of `T` at `Read()`.
+// - Updater, which accesses an instance of `T` at `Update()`.
 //
 // Contract:
-// - A value written to `Update()` and submitted by `TriggerUpdate()` is then
-//   seen by the reader thread in `Read()` after it calls `TriggerRead()`.
-// - While there are no new calls to `TriggerUpdate()`, calls to
-//   `TriggerRead()` are idemponent - `Read()` continues to return the same
-//   value.
+// - A value written to `Update()` by the Updater and submitted by
+//   `ForceUpdate()` is then seen by the Reader in `Read()` after it calls
+//   `TryRead()`.
+// - While there the Updater doesn't call `ForceUpdate()` or `TryUpdate()`,
+//   calls to `TryRead()` are idemponent - `Read()` continues to return the
+//   same reference.
 // - A value written to (or just abandoned in) `Read()` and submitted by
-//   `TriggerRead()' that returns `true`, is then seen by the updater thread in
-//   `Update()` after it calls `TriggerUpdate()`. The updater thread then can
-//   do any cleanups needed and overwrite the value to be submitted by the next
-//   call of `TriggerUpdate()`.
-//   Unlike the previous case, calls to `TriggerUpdate()` aren't idempotent -
-//   there is an asymetry between the reader and the updater, even though both
-//   can modify values: Calls to `TriggerUpdate` always submit a new value,
-//   even if the previous one hasn't been seen by the reader thread yet.
+//   `TryRead()' that returns `true`, is then seen by the updater thread in
+//   `Update()` after it calls `TryUpdate()` or `ForceUpdate()`. Similarly to
+//   above `TryUpdate()` is idempotent while the other thread doesn't call
+//   `TryRead()`.
+// - On the other hand, calls to `ForceUpdate()` aren't idempotent - each call
+//   always submits a new value, possibly overwriting the previous one, if it
+//   hasn't been accepted by the Reader yet.
 //
 // Internally the class manages 3 instances of `T`: One for `Read()`, one for
 // `Update()` and one that is "in flight" in between the two threads.
@@ -55,10 +54,10 @@ class Local3StateRcu {
   // Builds an instance by initializing the internal three `T` variables to
   // given values in the initial state:
   //
-  // - `read` is the value that'll be available in `Read()`. `TriggerRead()`
+  // - `read` is the value that'll be available in `Read()`. `TryRead()`
   //    will return `false`.
   // - `update` is the value that'll be available in `Update()`.
-  //   `TriggerUpdate()` will return `true` and the value reclaimed afterwards
+  //   `TryUpdate()` will return `true` and the value reclaimed afterwards
   //   in `Update` will be `reclaimed`.
   //
   // `T` must be moveable.
@@ -83,13 +82,16 @@ class Local3StateRcu {
   // Reference to the value that can be manipulated by the reading thread.
   T& Read() noexcept { return values_[read_.index]; }
 
-  // Signal that the reader thread is ready to consume a new value.
+  // Signal that the reader thread is ready to advance to a new value.
   //
   // Returns `true` if `Read()` now points to such a new value, invalidating
   // any previous reference obtained from `Read()`.
   // Returns `false` otherwise, that is, there is no new value available and
   // the reference pointed to by `Read()` remains unchanged.
-  bool TriggerRead() noexcept {
+  //
+  // See also `TryUpdate()` which has the same semantics for the updater
+  // thread.
+  bool TryRead() noexcept {
     Index next_read_index =
         next_read_index_.exchange(kNullIndex, std::memory_order_acq_rel);
     if (next_read_index != kNullIndex) {
@@ -103,38 +105,14 @@ class Local3StateRcu {
   // Reference to the value that can be manipulated by the updating thread.
   T& Update() noexcept { return values_[update_.index]; }
 
-  // Makes the value stored in `Update()` available to the reader and changes
-  // `Update()` to point to a value to be updated next.
+  // Returns `true` if `Update()` now points to such a new value, invalidating
+  // any previous reference obtained from `Update()`.
+  // Returns `false` otherwise, that is, there is no new value available and
+  // the reference pointed to by `Update()` remains unchanged.
   //
-  // Returns `true` iff `Update()` now points to a value used by the reader
-  // that should be reclaimed. Otherwise `Update()` points to a previous update
-  // value that hasn't been (and won't ever be) seen by the reader.
-  //
-  // In both cases any previous reference obtained by `Update()` is
-  // invalidated.
-  bool TriggerUpdate() noexcept {
-    Index old_next_read_index =
-        next_read_index_.exchange(update_.index, std::memory_order_acq_rel);
-    if (old_next_read_index == kNullIndex) {
-      update_.RotateAfterNext();
-      return true;
-    } else {
-      // The reader hasn't advanced yet.
-      // This is just a swap of update_index_ and next_read_index_.
-      update_.next_index = update_.index;
-      update_.index = old_next_read_index;
-      return false;
-    }
-  }
-
-  // Similar to `TriggerUpdate`, but triggers an update only if the reader has
-  // advanced and is waiting for a new value.
-  // In other words, never overwrites an update value that hasn't been seen by
-  // the reader.
-  // Returns `true` if an update was triggered and now `Update()` holds the
-  // reclaimed value from the reader. Otherwise returns `false`, which signals
-  // no action, in particular `Update()` points to the same value as before.
-  bool TryTriggerUpdate() noexcept {
+  // See also `TryRead()` which has the same semantics for the reader
+  // thread.
+  bool TryUpdate() noexcept {
     Index old_next_read_index = kNullIndex;
     // Use relaxed memory ordering on failure, since in this case there is no
     // related observable memory access.
@@ -146,6 +124,34 @@ class Local3StateRcu {
       return true;
     } else {
       // The reader hasn't advanced yet. Nothing to do.
+      return false;
+    }
+  }
+
+  // Makes the value stored in `Update()` available to the reader and changes
+  // `Update()` to point to a value to be updated next.
+  //
+  // Returns `true` iff `Update()` now points to a value used by the reader
+  // that should be reclaimed. Otherwise `Update()` points to a previous update
+  // value that hasn't been (and won't ever be) seen by the reader.
+  //
+  // In both cases any previous reference obtained by `Update()` is
+  // invalidated.
+  //
+  // Compared to `TryUpdate()` this method forces an update even if the
+  // reader hasn't advanced yet. In such a case a previous value passed by the
+  // updater (and waiting for the reader) is overwritten.
+  bool ForceUpdate() noexcept {
+    Index old_next_read_index =
+        next_read_index_.exchange(update_.index, std::memory_order_acq_rel);
+    if (old_next_read_index == kNullIndex) {
+      update_.RotateAfterNext();
+      return true;
+    } else {
+      // The reader hasn't advanced yet.
+      // This is just a swap of update_index_ and next_read_index_.
+      update_.next_index = update_.index;
+      update_.index = old_next_read_index;
       return false;
     }
   }

@@ -42,7 +42,7 @@ class ReverseRcu {
 
     ~Snapshot() noexcept {
       if (--registrar_.snapshot_depth_ == 0) {
-        registrar_.local_rcu_.TriggerRead();
+        registrar_.local_rcu_.TryRead();
       }
     }
 
@@ -68,8 +68,8 @@ class ReverseRcu {
     // Thread-safe.
     Local(ReverseRcu& rcu) LOCKS_EXCLUDED(rcu.lock_)
         : rcu_(rcu), snapshot_depth_(0), local_rcu_() {
-      // Allow `Snapshot` to `TriggerRead()` from the start.
-      local_rcu_.TriggerUpdate();
+      // Allow `Snapshot` to `TryRead()` from the start.
+      local_rcu_.ForceUpdate();
       absl::MutexLock mutex(&rcu_.lock_);
       rcu_.threads_.insert(this);
     }
@@ -87,12 +87,12 @@ class ReverseRcu {
    private:
     // Thread-compatible.
     T Collect() EXCLUSIVE_LOCKS_REQUIRED(rcu_.lock_) {
-      local_rcu_.TriggerUpdate();
+      local_rcu_.ForceUpdate();
       return absl::exchange(local_rcu_.Update(), T());
     }
 
     ReverseRcu& rcu_;
-    // Incremented with each `Snapshot` instance. Ensures that `TriggerRead` is
+    // Incremented with each `Snapshot` instance. Ensures that `TryRead` is
     // invoked only after the outermost `Snapshot` is destroyed, keeping
     // the reference unchanged for its whole lifetime.
     int_fast16_t snapshot_depth_;
