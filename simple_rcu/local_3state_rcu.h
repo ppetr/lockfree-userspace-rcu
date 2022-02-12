@@ -21,33 +21,32 @@
 namespace simple_rcu {
 
 // Provides a RCU-like framework to exchange values between just two threads
-// (hence "Local"):
+// "Reader" and "Updater" (hence "Local"). It consists of 3 instances of `T`
+// such that:
 //
-// - Reader, which accesses an instance of `T` at `Read()`.
-// - Updater, which accesses an instance of `T` at `Update()`.
+// - One is accessed by the Reader via the `Read()` reference.
+// - One is accessed by the Updater via the `Update()` reference.
+// - The last one is "in flight", being passed either:
+//   * From the Updater to the Reader ("U->R", the initial state).
+//   * From the Reader to the Updater ("R->U").
 //
-// Contract:
-// - A value written to `Update()` by the Updater and submitted by
-//   `ForceUpdate()` is then seen by the Reader in `Read()` after it calls
-//   `TryRead()`.
-// - While there the Updater doesn't call `ForceUpdate()` or `TryUpdate()`,
-//   calls to `TryRead()` are idemponent - `Read()` continues to return the
-//   same reference.
-// - A value written to (or just abandoned in) `Read()` and submitted by
-//   `TryRead()' that returns `true`, is then seen by the updater thread in
-//   `Update()` after it calls `TryUpdate()` or `ForceUpdate()`. Similarly to
-//   above `TryUpdate()` is idempotent while the other thread doesn't call
-//   `TryRead()`.
-// - On the other hand, calls to `ForceUpdate()` aren't idempotent - each call
-//   always submits a new value, possibly overwriting the previous one, if it
-//   hasn't been accepted by the Reader yet.
+// No two `...Read...` methods may be called concurrently. Similarly, no two
+// `...Update...` methods. This is usually accomplished by having one thread
+// access only the `...Read...` methods (the Reader) and another (the Updater)
+// only the `...Update...` methods.
 //
-// Internally the class manages 3 instances of `T`: One for `Read()`, one for
-// `Update()` and one that is "in flight" in between the two threads.
+// The Reader has a more passive role, only advancing to a new value when one
+// is provided by the Updater. The Updater allows more varied access to both
+// `Update()` and the in-flight values.
+//
+// See the documentation of the operations below for the description how they
+// interact with the three states.
 //
 // The implementation uses only atomic operations and does no memory
-// allocations on its own - it only "juggles" the 3 instances of `T`
-// internally between the two threads.
+// allocations during its operation - it only "juggles" the 3 pre-allocated
+// instances of `T` internally between the two threads. If they need to be
+// constructed and deconstructed as they pass between the Updater and the
+// Reader, wrap `T` into `absl::optional` or `std::unique_ptr`.
 template <typename T>
 class Local3StateRcu {
  public:
@@ -82,12 +81,15 @@ class Local3StateRcu {
   // Reference to the value that can be manipulated by the reading thread.
   T& Read() noexcept { return values_[read_.index]; }
 
-  // Signal that the reader thread is ready to advance to a new value.
+  // Advance the Reader to a new value, if possible.
   //
-  // Returns `true` if `Read()` now points to such a new value, invalidating
-  // any previous reference obtained from `Read()`.
-  // Returns `false` otherwise, that is, there is no new value available and
-  // the reference pointed to by `Read()` remains unchanged.
+  // If the in-flight instance is "U->R", it becomes bound to `Read()`, the
+  // value previosly pointed to by `Read() becomes in flight "R->U", and `true`
+  // is returned. In this case the previous reference returned by `Read()` must
+  // be considered invalid and must not be used any more.
+  //
+  // If the in-flight instance is already "R->U", does nothing and returns
+  // `false`.
   //
   // See also `TryUpdate()` which has the same semantics for the updater
   // thread.
@@ -105,13 +107,17 @@ class Local3StateRcu {
   // Reference to the value that can be manipulated by the updating thread.
   T& Update() noexcept { return values_[update_.index]; }
 
-  // Returns `true` if `Update()` now points to such a new value, invalidating
-  // any previous reference obtained from `Update()`.
-  // Returns `false` otherwise, that is, there is no new value available and
-  // the reference pointed to by `Update()` remains unchanged.
+  // Advance the Updater to a new value, if possible.
   //
-  // See also `TryRead()` which has the same semantics for the reader
-  // thread.
+  // If the in-flight instance is "R->U", it becomes bound to `Update()`, the
+  // value previosly pointed to by `Update() becomes in flight "U->R", and
+  // `true` is returned. In this case the previous reference returned by
+  // `Update()` must be considered invalid and must not be used any more.
+  //
+  // If the in-flight instance is already "U->R", does nothing and returns
+  // `false`.
+  //
+  // See also `TryRead()` which has the same semantics for the updater thread.
   bool TryUpdate() noexcept {
     Index old_next_read_index = kNullIndex;
     // Use relaxed memory ordering on failure, since in this case there is no
@@ -128,19 +134,19 @@ class Local3StateRcu {
     }
   }
 
-  // Makes the value stored in `Update()` available to the reader and changes
-  // `Update()` to point to a value to be updated next.
+  // Makes the value stored in `Update()` the new in-flight "U->R" value.
+  // Therefore it becomes available to the Reader regardless of the previous
+  // state. The previous in-flight instance becomes bound to `Update()`,
+  // whether it was "R->U" or "U->R".
   //
-  // Returns `true` iff `Update()` now points to a value used by the reader
-  // that should be reclaimed. Otherwise `Update()` points to a previous update
-  // value that hasn't been (and won't ever be) seen by the reader.
+  // Returns `true` if the previous state of the in-flight instances was
+  // "R->U", `false` if it was "U->R".
   //
-  // In both cases any previous reference obtained by `Update()` is
-  // invalidated.
+  // In both cases the previous reference returned by `Update()` must be
+  // considered invalid and must not be used any more.
   //
   // Compared to `TryUpdate()` this method forces an update even if the
-  // reader hasn't advanced yet. In such a case a previous value passed by the
-  // updater (and waiting for the reader) is overwritten.
+  // reader hasn't advanced yet.
   bool ForceUpdate() noexcept {
     Index old_next_read_index =
         next_read_index_.exchange(update_.index, std::memory_order_acq_rel);
@@ -153,6 +159,20 @@ class Local3StateRcu {
       update_.next_index = update_.index;
       update_.index = old_next_read_index;
       return false;
+    }
+  }
+
+  // Returns a pointer to the in-flight instance if it is "R->U". The returned
+  // pointer is valid only until one of the state-changing Updater's methods is
+  // called. If the in-flight instance is "U->R", returns `nullptr`.
+  //
+  // This allows to access the instance passed by the Reader to the Updater
+  // without providing a new value by `ForceUpdate()` or `TryUpdate()`.
+  T* ReclaimByUpdate() noexcept {
+    if (next_read_index_.load(std::memory_order_acquire) == kNullIndex) {
+      return &values_[update_.OldReadIndex()];
+    } else {
+      return nullptr;
     }
   }
 
@@ -184,9 +204,14 @@ class Local3StateRcu {
     // After `index` is pushed to `next_read_index_` above, rotate remaining
     // indices: next_index <- index <- old read index.
     inline void RotateAfterNext() noexcept {
-      Index old_read_index = (0 + 1 + 2) - (index + next_index);
+      Index old_read_index = OldReadIndex();
       next_index = index;
       index = old_read_index;  // To be reclaimed.
+    }
+
+    Index OldReadIndex() noexcept {
+      return (0 + 1 + 2) - (index + next_index);
+      ;
     }
 
     // The updater thread can manipulate the value at this index.

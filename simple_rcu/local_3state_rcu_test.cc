@@ -33,6 +33,12 @@ TEST(Local3StateRcuTest, UpdateAndReadReferences) {
   // Set up a new value in `Update()`.
   EXPECT_NE(&rcu.Update(), &rcu.Read())
       << "Update and Read must never point to the same object";
+  EXPECT_NE(rcu.ReclaimByUpdate(), nullptr)
+      << "ReclaimByUpdate() must point to the R->U instance";
+  EXPECT_NE(&rcu.Update(), rcu.ReclaimByUpdate())
+      << "Update and ReclaimByUpdate() must never point to the same object";
+  EXPECT_NE(&rcu.Read(), rcu.ReclaimByUpdate())
+      << "Read and ReclaimByUpdate() must never point to the same object";
   EXPECT_EQ(rcu.Update(), 0);
   EXPECT_EQ(rcu.Read(), 0);
   rcu.Update() = 42;
@@ -41,12 +47,26 @@ TEST(Local3StateRcuTest, UpdateAndReadReferences) {
   // Verify expectations before and after `TryRead()`.
   EXPECT_NE(&rcu.Update(), &rcu.Read())
       << "Update and Read must never point to the same object";
+  EXPECT_EQ(rcu.ReclaimByUpdate(), nullptr)
+      << "ReclaimByUpdate() must be nullptr for a U->R instance";
   EXPECT_EQ(rcu.Update(), 0);
   EXPECT_EQ(rcu.Read(), 0);
   EXPECT_TRUE(rcu.TryRead());
+  EXPECT_EQ(rcu.Read(), 42);
   EXPECT_NE(&rcu.Update(), &rcu.Read())
       << "Update and Read must never point to the same object";
-  EXPECT_EQ(rcu.Read(), 42);
+  ASSERT_NE(rcu.ReclaimByUpdate(), nullptr)
+      << "ReclaimByUpdate() must point to the R->U instance";
+  EXPECT_NE(&rcu.Update(), rcu.ReclaimByUpdate())
+      << "Update and ReclaimByUpdate() must never point to the same object";
+  EXPECT_NE(&rcu.Read(), rcu.ReclaimByUpdate())
+      << "Read and ReclaimByUpdate() must never point to the same object";
+}
+
+TEST(Local3StateRcuTest, ReclaimedToUpdate) {
+  Local3StateRcu<int> rcu(/*read=*/0, /*update=*/0, /*reclaim=*/42);
+  ASSERT_NE(rcu.ReclaimByUpdate(), nullptr);
+  EXPECT_EQ(*rcu.ReclaimByUpdate(), 42);
 }
 
 TEST(Local3StateRcuTest, DoubleUpdateBetweenReads) {
