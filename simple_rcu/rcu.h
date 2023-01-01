@@ -21,38 +21,27 @@ class Rcu {
                     std::is_copy_assignable<MutableT>::value,
                 "T must be copy constructible and assignable");
 
+  class SnapshotDeleter {
+   public:
+    SnapshotDeleter(const SnapshotDeleter &) noexcept = default;
+    SnapshotDeleter &operator=(const SnapshotDeleter &) noexcept = default;
+
+    void operator()(T *) { registrar_.snapsnot_depth_--; }
+
+   private:
+    SnapshotDeleter(Local &registrar) noexcept : registrar_(registrar) {}
+
+    Local &registrar_;
+
+    friend class Local;
+  };
+
   // Holds a read reference to a RCU value for the current thread.
   // The reference is guaranteed to be stable during the lifetime of `Snapshot`.
   // Callers are expected to limit the lifetime of `Snapshot` to as short as
   // possible.
   // Thread-compatible (but not thread-safe), reentrant.
-  class Snapshot final {
-   public:
-    Snapshot(Snapshot&& other) noexcept : Snapshot(other.registrar_) {}
-    Snapshot(const Snapshot& other) noexcept : Snapshot(other.registrar_) {}
-    Snapshot& operator=(Snapshot&&) = delete;
-    Snapshot& operator=(const Snapshot&) = delete;
-
-    ~Snapshot() noexcept { registrar_.snapsnot_depth_--; }
-
-    const T* operator->() const noexcept { return &**this; }
-    T* operator->() noexcept { return &**this; }
-    const T& operator*() const noexcept {
-      return *registrar_.local_rcu_.Read();
-    }
-    T& operator*() noexcept { return registrar_.local_rcu_.Read(); }
-
-   private:
-    Snapshot(Local& registrar) noexcept : registrar_(registrar) {
-      if (registrar_.snapsnot_depth_++ == 0) {
-        registrar_.local_rcu_.TryRead();
-      }
-    }
-
-    Local& registrar_;
-
-    friend class Local;
-  };
+  using Snapshot = std::unique_ptr<T, SnapshotDeleter>;
 
   // Interface to the RCU local to a particular reader thread.
   // Construction and destruction are thread-safe operations, but the `Read()`
@@ -61,7 +50,7 @@ class Rcu {
   class Local final {
    public:
     // Thread-safe.
-    Local(Rcu& rcu) LOCKS_EXCLUDED(rcu.lock_)
+    Local(Rcu &rcu) LOCKS_EXCLUDED(rcu.lock_)
         : rcu_(rcu), snapsnot_depth_(0), local_rcu_() {
       absl::MutexLock mutex(&rcu_.lock_);
       rcu_.threads_.insert(this);
@@ -75,7 +64,12 @@ class Rcu {
     // Obtains a read snapshot to the current value held by the RCU.
     // This is a very fast, lock-free and atomic operation.
     // Thread-compatible, but not thread-safe.
-    Snapshot Read() noexcept { return Snapshot(*this); }
+    Snapshot Read() noexcept {
+      if (snapsnot_depth_++ == 0) {
+        local_rcu_.TryRead();
+      }
+      return Snapshot(&local_rcu_.Read(), SnapshotDeleter(*this));
+    }
 
    private:
     // Thread-compatible.
@@ -86,7 +80,7 @@ class Rcu {
       // triggering update with the new value.
     }
 
-    Rcu& rcu_;
+    Rcu &rcu_;
     // Incremented with each `Snapshot` instance. Ensures that `TryRead` is
     // invoked only for the outermost `Snapshot`, keeping its value unchanged
     // for its whole lifetime.
@@ -113,7 +107,7 @@ class Rcu {
   T Update(typename std::remove_const<T>::type value) LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
     std::swap(value_, value);
-    for (Local* thread : threads_) {
+    for (Local *thread : threads_) {
       thread->Update(value_);
     }
     return value;
@@ -125,7 +119,7 @@ class Rcu {
   // instances.
   MutableT value_ GUARDED_BY(lock_);
   // List of registered thread-`Local` instances.
-  absl::flat_hash_set<Local*> threads_ GUARDED_BY(lock_);
+  absl::flat_hash_set<Local *> threads_ GUARDED_BY(lock_);
 };
 
 }  // namespace simple_rcu
