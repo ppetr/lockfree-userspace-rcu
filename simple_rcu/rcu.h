@@ -64,6 +64,9 @@ class Rcu {
     // Obtains a read snapshot to the current value held by the RCU.
     // This is a very fast, lock-free and atomic operation.
     // Thread-compatible, but not thread-safe.
+    //
+    // WARNING: Do not use `reset` or `release` on the returned `unique_ptr`.
+    // Doing so is likely to lead to undefined behavior.
     Snapshot Read() noexcept {
       if (snapsnot_depth_++ == 0) {
         local_rcu_.TryRead();
