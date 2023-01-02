@@ -14,19 +14,22 @@
 
 #include "simple_rcu/rcu.h"
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 namespace simple_rcu {
 namespace {
+
+using ::testing::Pointee;
 
 TEST(RcuTest, UpdateAndRead) {
   Rcu<int> rcu;
   Rcu<int>::Local local1(rcu);
   rcu.Update(42);
   Rcu<int>::Local local2(rcu);
-  EXPECT_EQ(*local1.Read(), 42)
+  EXPECT_THAT(local1.Read(), Pointee(42))
       << "Thread registered prior Update must receive the value";
-  EXPECT_EQ(*local2.Read(), 42)
+  EXPECT_THAT(local2.Read(), Pointee(42))
       << "Thread registered after Update must also receive the value";
 }
 
@@ -34,14 +37,16 @@ TEST(RcuTest, UpdateAndReadConst) {
   Rcu<const int> rcu;
   Rcu<const int>::Local local(rcu);
   rcu.Update(42);
-  EXPECT_EQ(*local.Read(), 42) << "Reader thread must receive a correct value";
+  EXPECT_THAT(local.Read(), Pointee(42))
+      << "Reader thread must receive a correct value";
 }
 
 TEST(RcuTest, ThreadLocalUpdateAndRead) {
   static Rcu<int> rcu;
   static thread_local Rcu<int>::Local local(rcu);
   rcu.Update(42);
-  EXPECT_EQ(*local.Read(), 42) << "Thread-local must receive the value";
+  EXPECT_THAT(local.Read(), Pointee(42))
+      << "Thread-local must receive the value";
 }
 
 TEST(RcuTest, ReadRemainsStable) {
@@ -49,12 +54,12 @@ TEST(RcuTest, ReadRemainsStable) {
   Rcu<int>::Local local(rcu);
   auto read_ref1 = local.Read();
   rcu.Update(73);
-  EXPECT_EQ(*read_ref1, 42)
+  EXPECT_THAT(read_ref1, Pointee(42))
       << "The first reference must hold its value past Update()";
   auto read_ref2 = local.Read();
-  EXPECT_EQ(*read_ref1, 42)
+  EXPECT_THAT(read_ref1, Pointee(42))
       << "The first reference must hold its value past another Read()";
-  EXPECT_EQ(*read_ref2, 42)
+  EXPECT_THAT(read_ref2, Pointee(42))
       << "A nested reference must have the same value as an outer one";
 }
 

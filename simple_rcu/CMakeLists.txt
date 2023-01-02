@@ -25,7 +25,7 @@ target_include_directories(rcu INTERFACE .)
 target_link_libraries(rcu INTERFACE local_3state_rcu absl::flat_hash_set absl::synchronization atomic)
 
 add_executable(rcu_test rcu_test.cc)
-target_link_libraries(rcu_test rcu gtest_main)
+target_link_libraries(rcu_test rcu gmock gtest_main)
 add_test(NAME rcu_test COMMAND rcu_test)
 
 add_executable(rcu_benchmark rcu_benchmark.cc)
