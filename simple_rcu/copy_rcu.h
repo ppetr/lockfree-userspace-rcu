@@ -165,6 +165,15 @@ class CopyRcu {
   absl::flat_hash_set<Local *> threads_ GUARDED_BY(lock_);
 };
 
+// By using `CopyRcu<shared_ptr<const T>>` we accomplish a RCU implementation
+// with the common API
+//
+// - `Update` receives a pointer (`shared_ptr` or by conversion `unique_ptr`)
+//   and shares it among all the `CopyRcu::Local` receivers.
+// - `ReadPtr` obtains a locally-scoped snapshot of `const T`.
+//
+// Note that no memory (de)allocation happens in the reader threads that invoke
+// `ReadPtr` (or `Read`). This is done exclusively by the updater thread.
 template <typename T>
 using Rcu = CopyRcu<std::shared_ptr<typename std::add_const<T>::type>>;
 
