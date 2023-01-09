@@ -17,6 +17,7 @@
 
 #include <array>
 #include <atomic>
+#include <cstddef>
 
 namespace simple_rcu {
 
@@ -177,7 +178,7 @@ class Local3StateRcu {
   }
 
  private:
-  using Index = int_fast8_t;
+  using Index = std::ptrdiff_t;
   static constexpr Index kNullIndex = -1;
 
   // Storage for instances of `T` that are juggled around between the reader
