@@ -1,4 +1,4 @@
-// Copyright 2022 Google LLC
+// Copyright 2022-2023 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "simple_rcu/rcu.h"
+#include "simple_rcu/copy_rcu.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -22,36 +22,38 @@ namespace {
 
 using ::testing::Pointee;
 
-TEST(RcuTest, UpdateAndRead) {
-  Rcu<int> rcu;
-  Rcu<int>::Local local1(rcu);
+TEST(CopyRcuTest, UpdateAndRead) {
+  CopyRcu<int> rcu;
+  CopyRcu<int>::Local local1(rcu);
   rcu.Update(42);
-  Rcu<int>::Local local2(rcu);
+  CopyRcu<int>::Local local2(rcu);
   EXPECT_THAT(local1.Read(), Pointee(42))
       << "Thread registered prior Update must receive the value";
   EXPECT_THAT(local2.Read(), Pointee(42))
       << "Thread registered after Update must also receive the value";
+  EXPECT_NE(local1.Read(), local2.Read())
+      << "Each snapshot must be a different (local) pointer";
 }
 
-TEST(RcuTest, UpdateAndReadConst) {
-  Rcu<const int> rcu;
-  Rcu<const int>::Local local(rcu);
+TEST(CopyRcuTest, UpdateAndReadConst) {
+  CopyRcu<const int> rcu;
+  CopyRcu<const int>::Local local(rcu);
   rcu.Update(42);
   EXPECT_THAT(local.Read(), Pointee(42))
       << "Reader thread must receive a correct value";
 }
 
-TEST(RcuTest, ThreadLocalUpdateAndRead) {
-  static Rcu<int> rcu;
-  static thread_local Rcu<int>::Local local(rcu);
+TEST(CopyRcuTest, ThreadLocalUpdateAndRead) {
+  static CopyRcu<int> rcu;
+  static thread_local CopyRcu<int>::Local local(rcu);
   rcu.Update(42);
   EXPECT_THAT(local.Read(), Pointee(42))
       << "Thread-local must receive the value";
 }
 
-TEST(RcuTest, ReadRemainsStable) {
-  Rcu<int> rcu(42);
-  Rcu<int>::Local local(rcu);
+TEST(CopyRcuTest, ReadRemainsStable) {
+  CopyRcu<int> rcu(42);
+  CopyRcu<int>::Local local(rcu);
   auto read_ref1 = local.Read();
   rcu.Update(73);
   EXPECT_THAT(read_ref1, Pointee(42))
@@ -61,6 +63,20 @@ TEST(RcuTest, ReadRemainsStable) {
       << "The first reference must hold its value past another Read()";
   EXPECT_THAT(read_ref2, Pointee(42))
       << "A nested reference must have the same value as an outer one";
+}
+
+TEST(RcuTest, UpdateAndReadPtr) {
+  Rcu<int> rcu;
+  Rcu<int>::Local local1(rcu);
+  EXPECT_EQ(local1.ReadPtr(), nullptr);
+  rcu.Update(std::make_shared<int>(42));
+  Rcu<int>::Local local2(rcu);
+  EXPECT_THAT(local1.ReadPtr(), Pointee(42))
+      << "Thread registered prior Update must receive the value";
+  EXPECT_THAT(local2.ReadPtr(), Pointee(42))
+      << "Thread registered after Update must also receive the value";
+  EXPECT_EQ(local1.ReadPtr(), local2.ReadPtr())
+      << "Both pointer snapshots must point to the shared value";
 }
 
 }  // namespace

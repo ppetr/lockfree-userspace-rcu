@@ -1,4 +1,4 @@
-// Copyright 2022 Google LLC
+// Copyright 2022-2023 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,47 +17,76 @@
 #include <thread>
 
 #include "benchmark/benchmark.h"
-#include "simple_rcu/rcu.h"
+#include "simple_rcu/copy_rcu.h"
 
 namespace simple_rcu {
 namespace {
 
+struct ThreadBundle {
+  ThreadBundle() : finished(false) {}
+  ~ThreadBundle() {
+    finished.store(true);
+    for (auto& thread : threads) {
+      thread.join();
+    }
+  }
+
+  std::atomic<bool> finished;
+  std::deque<std::thread> threads;
+};
+
 static void BM_Reads(benchmark::State& state) {
-  std::atomic<bool> finished(false);
-  static Rcu<int_fast32_t> rcu;
-  std::deque<std::thread> updater_threads;
+  static CopyRcu<int_fast32_t> rcu;
+  ThreadBundle updater;
   if (state.thread_index() == 0) {
     for (int i = 0; i < state.range(0); i++) {
-      updater_threads.emplace_back([&]() {
+      updater.threads.emplace_back([&]() {
         int_fast32_t updates = 0;
-        while (!finished.load()) {
+        while (!updater.finished.load()) {
           benchmark::DoNotOptimize(rcu.Update(updates++));
+        }
+      });
+    }
+  }
+  static thread_local CopyRcu<int_fast32_t>::Local reader(rcu);
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(*reader.Read());
+    benchmark::ClobberMemory();
+  }
+}
+BENCHMARK(BM_Reads)->ThreadRange(1, 3)->Arg(1)->Arg(4);
+
+static void BM_ReadSharedPtrs(benchmark::State& state) {
+  static Rcu<int_fast32_t> rcu(std::make_shared<int_fast32_t>(0));
+  ThreadBundle updater;
+  if (state.thread_index() == 0) {
+    for (int i = 0; i < state.range(0); i++) {
+      updater.threads.emplace_back([&]() {
+        int_fast32_t updates = 0;
+        while (!updater.finished.load()) {
+          benchmark::DoNotOptimize(
+              rcu.Update(std::make_shared<int_fast32_t>(updates++)));
         }
       });
     }
   }
   static thread_local Rcu<int_fast32_t>::Local reader(rcu);
   for (auto _ : state) {
-    benchmark::DoNotOptimize(*reader.Read());
+    benchmark::DoNotOptimize(*reader.ReadPtr());
     benchmark::ClobberMemory();
   }
-  finished.store(true);
-  for (auto& thread : updater_threads) {
-    thread.join();
-  }
 }
-BENCHMARK(BM_Reads)->ThreadRange(1, 3)->Arg(1)->Arg(4);
+BENCHMARK(BM_ReadSharedPtrs)->ThreadRange(1, 3)->Arg(1)->Arg(4);
 
 static void BM_Updates(benchmark::State& state) {
-  std::atomic<bool> finished(false);
-  static Rcu<int_fast32_t> rcu;
-  std::deque<std::thread> reader_threads;
+  static CopyRcu<int_fast32_t> rcu;
+  ThreadBundle reader;
   if (state.thread_index() == 0) {
     for (int i = 0; i < state.range(0); i++) {
-      reader_threads.emplace_back([&]() {
-        static thread_local Rcu<int_fast32_t>::Local reader(rcu);
-        while (!finished.load()) {
-          benchmark::DoNotOptimize(*reader.Read());
+      reader.threads.emplace_back([&]() {
+        static thread_local CopyRcu<int_fast32_t>::Local local(rcu);
+        while (!reader.finished.load()) {
+          benchmark::DoNotOptimize(*local.Read());
         }
       });
     }
@@ -66,10 +95,6 @@ static void BM_Updates(benchmark::State& state) {
   for (auto _ : state) {
     benchmark::DoNotOptimize(rcu.Update(++updates));
     benchmark::ClobberMemory();
-  }
-  finished.store(true);
-  for (auto& thread : reader_threads) {
-    thread.join();
   }
 }
 BENCHMARK(BM_Updates)->ThreadRange(1, 3)->Arg(1)->Arg(4);

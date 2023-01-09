@@ -1,4 +1,4 @@
-# Copyright 2022 Google LLC
+# Copyright 2022-2023 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,17 +20,19 @@ add_executable(local_3state_rcu_test local_3state_rcu_test.cc)
 target_link_libraries(local_3state_rcu_test gtest_main)
 add_test(NAME local_3state_rcu_test COMMAND local_3state_rcu_test)
 
-add_library(rcu INTERFACE)
-target_include_directories(rcu INTERFACE .)
-target_link_libraries(rcu INTERFACE local_3state_rcu absl::flat_hash_set absl::synchronization atomic)
+add_library(copy_rcu INTERFACE)
+target_include_directories(copy_rcu INTERFACE .)
+target_link_libraries(copy_rcu INTERFACE local_3state_rcu absl::flat_hash_set absl::synchronization atomic)
 
-add_executable(rcu_test rcu_test.cc)
-target_link_libraries(rcu_test rcu gmock gtest_main)
-add_test(NAME rcu_test COMMAND rcu_test)
+add_executable(copy_rcu_test copy_rcu_test.cc)
+target_link_libraries(copy_rcu_test copy_rcu gmock gtest_main)
+add_test(NAME copy_rcu_test COMMAND copy_rcu_test)
 
-add_executable(rcu_benchmark rcu_benchmark.cc)
-target_link_libraries(rcu_benchmark rcu benchmark::benchmark_main)
-add_test(NAME rcu_benchmark COMMAND rcu_benchmark)
+add_executable(copy_rcu_benchmark copy_rcu_benchmark.cc)
+target_link_libraries(copy_rcu_benchmark copy_rcu benchmark::benchmark_main)
+add_test(NAME copy_rcu_benchmark COMMAND copy_rcu_benchmark)
+
+
 
 add_library(reverse_rcu INTERFACE)
 target_include_directories(reverse_rcu INTERFACE .)
