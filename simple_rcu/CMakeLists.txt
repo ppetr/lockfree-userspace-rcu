@@ -22,7 +22,7 @@ add_test(NAME local_3state_rcu_test COMMAND local_3state_rcu_test)
 
 add_library(copy_rcu INTERFACE)
 target_include_directories(copy_rcu INTERFACE .)
-target_link_libraries(copy_rcu INTERFACE local_3state_rcu absl::flat_hash_set absl::synchronization atomic)
+target_link_libraries(copy_rcu INTERFACE local_3state_rcu absl::flat_hash_set absl::function_ref absl::optional absl::synchronization atomic)
 
 add_executable(copy_rcu_test copy_rcu_test.cc)
 target_link_libraries(copy_rcu_test copy_rcu gmock gtest_main)

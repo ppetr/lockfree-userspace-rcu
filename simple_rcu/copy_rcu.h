@@ -16,6 +16,7 @@
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/optional.h"
 #include "simple_rcu/local_3state_rcu.h"
 
 namespace simple_rcu {
@@ -149,6 +150,25 @@ class CopyRcu {
   // threads that have no `Local` instance at all.
   T Update(typename std::remove_const<T>::type value) LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
+    return UpdateLocked(std::move(value));
+  }
+  // Similar to `Update`, but replaces the value only if the old one satisfies
+  // the given predicate. Often the predicate will be an equality with a
+  // previous value.
+  absl::optional<T> UpdateIf(typename std::remove_const<T>::type value,
+                             absl::FunctionRef<bool(const T &)> pred)
+      LOCKS_EXCLUDED(lock_) {
+    absl::MutexLock mutex(&lock_);
+    if (pred(value_)) {
+      return absl::make_optional(UpdateLocked(std::move(value)));
+    } else {
+      return absl::nullopt;
+    }
+  }
+
+ private:
+  T UpdateLocked(typename std::remove_const<T>::type value)
+      EXCLUSIVE_LOCKS_REQUIRED(lock_) {
     for (Local *thread : threads_) {
       thread->Update(value);
     }
@@ -156,7 +176,6 @@ class CopyRcu {
     return value;
   }
 
- private:
   absl::Mutex lock_;
   // The current value that has been distributed to all thread-`Local`
   // instances.

@@ -43,6 +43,17 @@ TEST(CopyRcuTest, UpdateAndReadConst) {
       << "Reader thread must receive a correct value";
 }
 
+TEST(CopyRcuTest, UpdateIf) {
+  CopyRcu<int> rcu(0);
+  CopyRcu<int>::Local local(rcu);
+  rcu.UpdateIf(42, [](int previous) { return previous != 0; });
+  EXPECT_THAT(local.Read(), Pointee(0))
+      << "Must not update a value that doesn't match the predicate";
+  rcu.UpdateIf(42, [](const int& previous) { return previous == 0; });
+  EXPECT_THAT(local.Read(), Pointee(42))
+      << "Must update a value that matches the predicate";
+}
+
 TEST(CopyRcuTest, ThreadLocalUpdateAndRead) {
   static CopyRcu<int> rcu;
   static thread_local CopyRcu<int>::Local local(rcu);
