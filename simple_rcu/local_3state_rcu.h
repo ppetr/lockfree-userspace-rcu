@@ -178,7 +178,17 @@ class Local3StateRcu {
   }
 
  private:
+#ifdef __cpp_lib_atomic_lock_free_type_aliases
+  using Index = typename std::atomic_signed_lock_free::value_type;
+#else
   using Index = std::ptrdiff_t;
+#endif
+#ifdef __cpp_lib_atomic_is_always_lock_free
+  static_assert(std::atomic<Index>::is_always_lock_free,
+                "Not lock-free on this architecture, please report this as a "
+                "bug on the project's GitHub page");
+#endif
+
   static constexpr Index kNullIndex = -1;
 
   // Storage for instances of `T` that are juggled around between the reader
