@@ -6,6 +6,8 @@
 
 _*Disclaimer:* This is not an officially supported Google product._
 
+[![Build Status](https://app.travis-ci.com/ppetr/lockfree-userspace-rcu.svg?branch=main)](https://app.travis-ci.com/ppetr/lockfree-userspace-rcu)
+
 ## Usage
 
 ```c++
