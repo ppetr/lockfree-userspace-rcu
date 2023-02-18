@@ -60,71 +60,83 @@ need to distribute values to the readers' thread-local copies.
 <dt><code>g++</code> on Core i5:</dt>
   <dd>
     <pre>
-2023-01-09T11:20:47+01:00
-Running build/rel-gcc/simple_rcu/copy_rcu_benchmark
-Run on (4 X 1981.52 MHz CPU s)
+2023-02-18T22:00:28+01:00
+Running ./build/rel-gcc/simple_rcu/copy_rcu_benchmark
+Run on (4 X 1948.55 MHz CPU s)
 CPU Caches:
   L1 Data 32 KiB (x4)
   L1 Instruction 32 KiB (x4)
   L2 Unified 256 KiB (x4)
   L3 Unified 6144 KiB (x1)
-Load Average: 0.40, 0.13, 0.12
-------------------------------------------------------------------------
-Benchmark                              Time             CPU   Iterations
-------------------------------------------------------------------------
-BM_Reads/1/threads:1                59.3 ns         59.3 ns     11819321
-BM_Reads/1/threads:2                21.4 ns         42.7 ns     16274508
-BM_Reads/1/threads:3                10.3 ns         31.0 ns     20191095
-BM_Reads/4/threads:1                55.7 ns         55.7 ns     12663755
-BM_Reads/4/threads:2                10.1 ns         20.1 ns     38452336
-BM_Reads/4/threads:3                9.47 ns         26.8 ns     38557011
-BM_ReadSharedPtrs/1/threads:1       66.9 ns         66.9 ns     10383232
-BM_ReadSharedPtrs/1/threads:2       12.9 ns         25.7 ns     20000000
-BM_ReadSharedPtrs/1/threads:3       4.91 ns         14.7 ns     42913059
-BM_ReadSharedPtrs/4/threads:1       35.9 ns         35.9 ns     23200403
-BM_ReadSharedPtrs/4/threads:2       5.03 ns         10.1 ns     63553140
-BM_ReadSharedPtrs/4/threads:3       4.67 ns         13.5 ns     56092143
-BM_Updates/1/threads:1               128 ns          128 ns      5502765
-BM_Updates/1/threads:2               203 ns          402 ns      1694968
-BM_Updates/1/threads:3               189 ns          479 ns      1495890
-BM_Updates/4/threads:1               435 ns          374 ns      1827026
-BM_Updates/4/threads:2               406 ns          384 ns      1986608
-BM_Updates/4/threads:3               386 ns          494 ns      1299039
+Load Average: 1.28, 0.51, 0.18
+-----------------------------------------------------------------------------------
+Benchmark                                         Time             CPU   Iterations
+-----------------------------------------------------------------------------------
+BM_Reads/1/threads:1                           75.0 ns         75.0 ns      9351178
+BM_Reads/1/threads:2                           21.3 ns         42.7 ns     16485720
+BM_Reads/1/threads:3                           10.5 ns         31.6 ns     22134405
+BM_Reads/4/threads:1                           76.2 ns         76.1 ns     10649990
+BM_Reads/4/threads:2                           20.6 ns         41.2 ns     16721828
+BM_Reads/4/threads:3                           9.85 ns         28.6 ns     23047518
+BM_ReadSharedPtrs/1/threads:1                  73.8 ns         73.8 ns      8486246
+BM_ReadSharedPtrs/1/threads:2                  22.7 ns         45.3 ns     16267454
+BM_ReadSharedPtrs/1/threads:3                  10.8 ns         32.5 ns     23683905
+BM_ReadSharedPtrs/4/threads:1                  58.4 ns         58.3 ns     10000000
+BM_ReadSharedPtrs/4/threads:2                  9.79 ns         19.5 ns     33210820
+BM_ReadSharedPtrs/4/threads:3                  6.98 ns         20.7 ns     34201104
+BM_ReadSharedPtrsThreadLocal/1/threads:1        138 ns          138 ns      4368834
+BM_ReadSharedPtrsThreadLocal/1/threads:2       40.8 ns         81.6 ns      7483130
+BM_ReadSharedPtrsThreadLocal/1/threads:3       20.8 ns         62.5 ns     11944542
+BM_ReadSharedPtrsThreadLocal/4/threads:1        225 ns          224 ns      3341196
+BM_ReadSharedPtrsThreadLocal/4/threads:2       59.6 ns          118 ns      5889856
+BM_ReadSharedPtrsThreadLocal/4/threads:3       28.7 ns         79.5 ns      9460413
+BM_Updates/1/threads:1                          142 ns          142 ns      4936095
+BM_Updates/1/threads:2                         41.4 ns         82.8 ns      8346928
+BM_Updates/1/threads:3                         20.9 ns         62.7 ns     10951884
+BM_Updates/4/threads:1                          429 ns          366 ns      1940278
+BM_Updates/4/threads:2                          124 ns          191 ns      3787492
+BM_Updates/4/threads:3                         58.7 ns          130 ns      5482329
     </pre>
   </dd>
 <dt><code>clang++11</code> on Core i5:</dt>
   <dd>
     <pre>
-2023-01-09T11:20:26+01:00
-Running build/rel-clang11/simple_rcu/copy_rcu_benchmark
-Run on (4 X 2180.18 MHz CPU s)
+2023-02-18T22:00:48+01:00
+Running ./build/rel-clang11/simple_rcu/copy_rcu_benchmark
+Run on (4 X 1672.18 MHz CPU s)
 CPU Caches:
   L1 Data 32 KiB (x4)
   L1 Instruction 32 KiB (x4)
   L2 Unified 256 KiB (x4)
   L3 Unified 6144 KiB (x1)
-Load Average: 0.11, 0.05, 0.10
-------------------------------------------------------------------------
-Benchmark                              Time             CPU   Iterations
-------------------------------------------------------------------------
-BM_Reads/1/threads:1                77.9 ns         77.9 ns      8973229
-BM_Reads/1/threads:2                16.8 ns         33.5 ns     19910656
-BM_Reads/1/threads:3                8.55 ns         25.7 ns     27743406
-BM_Reads/4/threads:1                67.8 ns         67.7 ns     10000000
-BM_Reads/4/threads:2                8.30 ns         16.5 ns     44192786
-BM_Reads/4/threads:3                7.20 ns         20.1 ns     30000000
-BM_ReadSharedPtrs/1/threads:1       52.5 ns         52.5 ns     13525121
-BM_ReadSharedPtrs/1/threads:2       8.99 ns         18.0 ns     42398912
-BM_ReadSharedPtrs/1/threads:3       5.00 ns         15.0 ns     44616918
-BM_ReadSharedPtrs/4/threads:1       46.5 ns         46.5 ns     13235953
-BM_ReadSharedPtrs/4/threads:2       4.90 ns         9.74 ns     58649326
-BM_ReadSharedPtrs/4/threads:3       5.09 ns         14.6 ns     47492265
-BM_Updates/1/threads:1               146 ns          146 ns      4773062
-BM_Updates/1/threads:2               172 ns          344 ns      1867244
-BM_Updates/1/threads:3               172 ns          515 ns      1238121
-BM_Updates/4/threads:1               533 ns          388 ns      1775958
-BM_Updates/4/threads:2               571 ns          440 ns      1524154
-BM_Updates/4/threads:3               358 ns          510 ns      1448880
+Load Average: 1.72, 0.65, 0.24
+-----------------------------------------------------------------------------------
+Benchmark                                         Time             CPU   Iterations
+-----------------------------------------------------------------------------------
+BM_Reads/1/threads:1                           78.6 ns         78.6 ns      8424422
+BM_Reads/1/threads:2                           22.2 ns         44.3 ns     15918648
+BM_Reads/1/threads:3                           11.1 ns         33.2 ns     21533877
+BM_Reads/4/threads:1                           40.7 ns         40.7 ns     17636729
+BM_Reads/4/threads:2                           13.6 ns         27.1 ns     25246078
+BM_Reads/4/threads:3                           8.12 ns         21.9 ns     30000000
+BM_ReadSharedPtrs/1/threads:1                  66.0 ns         66.0 ns     10045400
+BM_ReadSharedPtrs/1/threads:2                  16.7 ns         33.4 ns     15681908
+BM_ReadSharedPtrs/1/threads:3                  8.56 ns         25.7 ns     29815704
+BM_ReadSharedPtrs/4/threads:1                  56.9 ns         56.9 ns     12850586
+BM_ReadSharedPtrs/4/threads:2                  15.5 ns         31.0 ns     19309028
+BM_ReadSharedPtrs/4/threads:3                  7.74 ns         23.1 ns     31823679
+BM_ReadSharedPtrsThreadLocal/1/threads:1        139 ns          138 ns      4982242
+BM_ReadSharedPtrsThreadLocal/1/threads:2       42.6 ns         85.3 ns      8344010
+BM_ReadSharedPtrsThreadLocal/1/threads:3       20.6 ns         61.8 ns     10024821
+BM_ReadSharedPtrsThreadLocal/4/threads:1        211 ns          211 ns      3380917
+BM_ReadSharedPtrsThreadLocal/4/threads:2       63.1 ns          125 ns      6312482
+BM_ReadSharedPtrsThreadLocal/4/threads:3       29.1 ns         81.4 ns      9623721
+BM_Updates/1/threads:1                          156 ns          156 ns      4479429
+BM_Updates/1/threads:2                         39.8 ns         79.6 ns      9281536
+BM_Updates/1/threads:3                         20.0 ns         59.9 ns     11436756
+BM_Updates/4/threads:1                          428 ns          354 ns      2005830
+BM_Updates/4/threads:2                          140 ns          182 ns      3817828
+BM_Updates/4/threads:3                         60.2 ns          131 ns      5655744
     </pre>
   </dd>
 </dl>
