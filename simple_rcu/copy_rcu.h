@@ -70,10 +70,8 @@ class CopyRcu {
 
   // Interface to the RCU local to a particular reader thread.
   // Construction and destruction are thread-safe operations, but the `Read()`
-  // method is only thread-compatible. Callers are expected to construct a
-  // separate `Local` instance for each reader thread.
-  //
-  // TODO: Document the behavior of reentrant invocations of `Read`.
+  // (and `ReadPtr()`) methods are only thread-compatible. Callers are expected
+  // to construct a separate `Local` instance for each reader thread.
   class Local final {
    public:
     // Thread-safe. Argument `rcu` must outlive this instance.
@@ -104,6 +102,13 @@ class CopyRcu {
     // This is a very fast, lock-free and atomic operation.
     // Thread-compatible, but not thread-safe.
     //
+    // Reentrancy: Each call to `Read()` increments an internal reference
+    // counter, which is decremented by releasing a `Snapshot`. Only when the
+    // counter is being incremented from 0 a fresh value is obtained from the
+    // RCU. Subsequent nested calls to `Read()` return the same value. This
+    // mechanism ensures that the value of a `Snapshot` is not changed by such
+    // nested calls.
+    //
     // WARNING: Do not use `reset` or `release` on the returned `unique_ptr`.
     // Doing so is likely to lead to undefined behavior.
     Snapshot Read() noexcept {
@@ -114,7 +119,7 @@ class CopyRcu {
     }
 
     // In case `T` is a `std::shared_ptr`, `ReadPtr` provides convenient access
-    // directly to the pointer's value.
+    // directly to the pointer's target.
     //
     // Note that when using `ReadPtr` the `shared_ptr` is never destroyed by
     // the calling thread, thus avoiding any performance penalty related to its

@@ -63,9 +63,11 @@ TEST(CopyRcuTest, ReadRemainsStable) {
       << "The first reference must hold its value past Update()";
   auto read_ref2 = local.Read();
   EXPECT_THAT(read_ref1, Pointee(42))
-      << "The first reference must hold its value past another Read()";
+      << "The first reference must hold its value past a nested Read()";
   EXPECT_THAT(read_ref2, Pointee(42))
-      << "A nested reference must have the same value as an outer one";
+      << "A nested Read() must hold the same value as an outer one";
+  EXPECT_EQ(read_ref1.get(), read_ref2.get())
+      << "A nested Read() must point to the same value as an outer one";
 }
 
 TEST(RcuTest, UpdateAndReadPtr) {
