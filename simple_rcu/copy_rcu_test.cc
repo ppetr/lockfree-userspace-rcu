@@ -54,14 +54,6 @@ TEST(CopyRcuTest, UpdateIf) {
       << "Must update a value that matches the predicate";
 }
 
-TEST(CopyRcuTest, ThreadLocalUpdateAndRead) {
-  static CopyRcu<int> rcu;
-  static thread_local CopyRcu<int>::Local local(rcu);
-  rcu.Update(42);
-  EXPECT_THAT(local.Read(), Pointee(42))
-      << "Thread-local must receive the value";
-}
-
 TEST(CopyRcuTest, ReadRemainsStable) {
   CopyRcu<int> rcu(42);
   CopyRcu<int>::Local local(rcu);
@@ -88,6 +80,15 @@ TEST(RcuTest, UpdateAndReadPtr) {
       << "Thread registered after Update must also receive the value";
   EXPECT_EQ(local1.ReadPtr(), local2.ReadPtr())
       << "Both pointer snapshots must point to the shared value";
+}
+
+TEST(CopyRcuTest, ThreadLocalUpdateAndRead) {
+  const auto rcu = std::make_shared<Rcu<int>>();
+  EXPECT_EQ(*Read(rcu), nullptr);
+  EXPECT_EQ(ReadPtr(rcu), nullptr);
+  rcu->Update(std::make_shared<int>(42));
+  EXPECT_THAT(Read(rcu), Pointee(Pointee(42)));
+  EXPECT_THAT(ReadPtr(rcu), Pointee(42));
 }
 
 }  // namespace

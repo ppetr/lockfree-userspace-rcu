@@ -36,19 +36,19 @@ struct ThreadBundle {
 };
 
 static void BM_Reads(benchmark::State& state) {
-  static CopyRcu<int_fast32_t> rcu;
+  const auto rcu = std::make_shared<CopyRcu<int_fast32_t>>();
   ThreadBundle updater;
   if (state.thread_index() == 0) {
     for (int i = 0; i < state.range(0); i++) {
       updater.threads.emplace_back([&]() {
         int_fast32_t updates = 0;
         while (!updater.finished.load()) {
-          benchmark::DoNotOptimize(rcu.Update(updates++));
+          benchmark::DoNotOptimize(rcu->Update(updates++));
         }
       });
     }
   }
-  static thread_local CopyRcu<int_fast32_t>::Local reader(rcu);
+  CopyRcu<int_fast32_t>::Local reader(rcu);
   for (auto _ : state) {
     benchmark::DoNotOptimize(*reader.Read());
     benchmark::ClobberMemory();
@@ -57,7 +57,7 @@ static void BM_Reads(benchmark::State& state) {
 BENCHMARK(BM_Reads)->ThreadRange(1, 3)->Arg(1)->Arg(4);
 
 static void BM_ReadSharedPtrs(benchmark::State& state) {
-  static Rcu<int_fast32_t> rcu(std::make_shared<int_fast32_t>(0));
+  Rcu<int_fast32_t> rcu(std::make_shared<int_fast32_t>(0));
   ThreadBundle updater;
   if (state.thread_index() == 0) {
     for (int i = 0; i < state.range(0); i++) {
@@ -70,21 +70,43 @@ static void BM_ReadSharedPtrs(benchmark::State& state) {
       });
     }
   }
-  static thread_local Rcu<int_fast32_t>::Local reader(rcu);
+  Rcu<int_fast32_t>::Local local(rcu);
   for (auto _ : state) {
-    benchmark::DoNotOptimize(*reader.ReadPtr());
+    benchmark::DoNotOptimize(*local.ReadPtr());
     benchmark::ClobberMemory();
   }
 }
 BENCHMARK(BM_ReadSharedPtrs)->ThreadRange(1, 3)->Arg(1)->Arg(4);
 
+static void BM_ReadSharedPtrsThreadLocal(benchmark::State& state) {
+  const auto rcu =
+      std::make_shared<Rcu<int_fast32_t>>(std::make_shared<int_fast32_t>(0));
+  ThreadBundle updater;
+  if (state.thread_index() == 0) {
+    for (int i = 0; i < state.range(0); i++) {
+      updater.threads.emplace_back([&]() {
+        int_fast32_t updates = 0;
+        while (!updater.finished.load()) {
+          benchmark::DoNotOptimize(
+              rcu->Update(std::make_shared<int_fast32_t>(updates++)));
+        }
+      });
+    }
+  }
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(*ReadPtr(rcu));
+    benchmark::ClobberMemory();
+  }
+}
+BENCHMARK(BM_ReadSharedPtrsThreadLocal)->ThreadRange(1, 3)->Arg(1)->Arg(4);
+
 static void BM_Updates(benchmark::State& state) {
-  static CopyRcu<int_fast32_t> rcu;
+  const auto rcu = std::make_shared<CopyRcu<int_fast32_t>>();
   ThreadBundle reader;
   if (state.thread_index() == 0) {
     for (int i = 0; i < state.range(0); i++) {
       reader.threads.emplace_back([&]() {
-        static thread_local CopyRcu<int_fast32_t>::Local local(rcu);
+        CopyRcu<int_fast32_t>::Local local(rcu);
         while (!reader.finished.load()) {
           benchmark::DoNotOptimize(*local.Read());
         }
@@ -93,7 +115,7 @@ static void BM_Updates(benchmark::State& state) {
   }
   int_fast32_t updates = 0;
   for (auto _ : state) {
-    benchmark::DoNotOptimize(rcu.Update(++updates));
+    benchmark::DoNotOptimize(rcu->Update(++updates));
     benchmark::ClobberMemory();
   }
 }
