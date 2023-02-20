@@ -194,13 +194,30 @@ class CopyRcu {
   // It keeps a `std::weak_ptr` to `rcu` so that it unregisters from it if (and
   // only if) `rcu` is still alive when this thread is destroyed.
   static Local &GetThreadLocal(std::shared_ptr<CopyRcu> rcu) noexcept {
-    static thread_local absl::flat_hash_map<CopyRcu *, std::unique_ptr<Local>>
-        local_map;
-    std::unique_ptr<Local> &local = local_map[rcu.get()];
+    std::unique_ptr<Local> &local = ThreadLocalMap()[rcu.get()];
     if (ABSL_PREDICT_FALSE(local == nullptr)) {
       local = absl::make_unique<Local>(std::move(rcu));
     }
     return *local;
+  }
+
+  // Cleans up `Local` instances created by `GetThreadLocal`, whose `CopyRcu`
+  // parent objects have been deleted (as determined by their internal
+  // `std::weak_ptr<CopyRcu>`).
+  // Returns the number of deleted instances.
+  static int CleanUpThreadLocal() noexcept {
+    int deleted_count = 0;
+    auto &map = ThreadLocalMap();
+    for (auto it = map.begin(); it != map.end();) {
+      const std::weak_ptr<CopyRcu> *ptr = absl::get_if<1>(&it->second->rcu_);
+      if ((ptr != nullptr) && ptr->expired()) {
+        map.erase(it++);
+        deleted_count++;
+      } else {
+        it++;
+      }
+    }
+    return deleted_count;
   }
 
  private:
@@ -222,6 +239,13 @@ class CopyRcu {
   void Unregister(Local &thread) LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
     threads_.erase(&thread);
+  }
+
+  static absl::flat_hash_map<CopyRcu *, std::unique_ptr<Local>>
+      &ThreadLocalMap() {
+    static thread_local absl::flat_hash_map<CopyRcu *, std::unique_ptr<Local>>
+        local_map;
+    return local_map;
   }
 
   absl::Mutex lock_;

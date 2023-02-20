@@ -85,12 +85,17 @@ TEST(RcuTest, UpdateAndReadPtr) {
 }
 
 TEST(CopyRcuTest, ThreadLocalUpdateAndRead) {
-  const auto rcu = std::make_shared<Rcu<int>>();
-  EXPECT_EQ(*Read(rcu), nullptr);
-  EXPECT_EQ(ReadPtr(rcu), nullptr);
-  rcu->Update(std::make_shared<int>(42));
-  EXPECT_THAT(Read(rcu), Pointee(Pointee(42)));
-  EXPECT_THAT(ReadPtr(rcu), Pointee(42));
+  {
+    const auto rcu = std::make_shared<Rcu<int>>();
+    EXPECT_EQ(*Read(rcu), nullptr);
+    EXPECT_EQ(ReadPtr(rcu), nullptr);
+    rcu->Update(std::make_shared<int>(42));
+    EXPECT_THAT(Read(rcu), Pointee(Pointee(42)));
+    EXPECT_THAT(ReadPtr(rcu), Pointee(42));
+    EXPECT_EQ(Rcu<int>::CleanUpThreadLocal(), 0);
+  }
+  EXPECT_EQ(Rcu<int>::CleanUpThreadLocal(), 1);
+  EXPECT_EQ(Rcu<int>::CleanUpThreadLocal(), 0);
 }
 
 }  // namespace
