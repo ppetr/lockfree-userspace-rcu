@@ -50,7 +50,7 @@ auto ref = local.ReadPtr();
 // `const MyType`.
 ```
 
-See [rcu_test.cc](simple_rcu/rcu_test.cc) for more examples.
+See [copy_rcu_test.cc](simple_rcu/copy_rcu_test.cc) for more examples.
 
 ## Dependencies
 
