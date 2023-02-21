@@ -22,10 +22,12 @@ namespace {
 TEST(Local3StateRcuTest, ConstructorArgumentsAndInitialState) {
   Local3StateRcu<int_fast32_t> rcu(42);
   EXPECT_EQ(rcu.Read(), 42);
+  EXPECT_EQ(const_cast<const Local3StateRcu<int_fast32_t>&>(rcu).Read(), 42);
   EXPECT_EQ(rcu.Update(), 42);
   EXPECT_FALSE(rcu.TryRead()) << "Read shouldn't advance in an initial state";
   ASSERT_TRUE(rcu.ForceUpdate()) << "Update should advance in an initial state";
   EXPECT_EQ(rcu.Update(), 42);
+  EXPECT_EQ(const_cast<const Local3StateRcu<int_fast32_t>&>(rcu).Update(), 42);
 }
 
 TEST(Local3StateRcuTest, UpdateAndReadReferences) {
