@@ -39,7 +39,7 @@ auto ref = simple_rcu::ReadPtr(rcu);
 // snapshots of `MyType`.
 simple_rcu::Rcu<MyType>::Local local(rcu);
 
-// Afterwards each reader thread can repeatedly fetch a const pointer to a
+// Afterwards the reader thread can repeatedly fetch a const pointer to a
 // snapshot of the instance. This is faster than the simple usage above, since it
 // avoids the internal bookkeeping cost of a `thread_local` variable, at the cost
 // of explicitly maintaining a `Local` variable. It effectively involves only a
