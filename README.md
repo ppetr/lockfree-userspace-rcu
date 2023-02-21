@@ -14,18 +14,40 @@ _*Disclaimer:* This is not an officially supported Google product._
 #include "simple_rcu/rcu.h"
 
 // Shared object that provides an instance of `MyType`:
-Rcu<MyType> rcu;
+auto rcu = std::make_shared<simple_rcu::Rcu<MyType>>();
 
-// Each reader thread creates a local accessor to `rcu` (this can be simplified
-// using a `thread_local` variable).
-Rcu<MyType>::Local local(rcu);
+// Any thread can atomically update the value (can be also a `unique_ptr`,
+// which auto-converts to `shared_ptr`). This is a relatively slow operation
+/ (takes a lock internally).
+rcu->Update(std::make_shared<MyType>(...));
+```
 
-// Any thread can atomically update the value (can be also a `unique_ptr`):
-rcu.Update(std::make_shared<MyType>(...));
+### Simple
 
+```c++
 // Afterwards each reader thread can fetch a const pointer to a snapshot of the
-// instance:
-local.ReadPtr()->ConstMethodOnMyType(...);
+// instance. This is a lock-free operation.
+auto ref = simple_rcu::ReadPtr(rcu);
+// `ref` now holds a `unique_ptr` to a stable, thread-local snapshot of
+// `const MyType`.
+```
+
+### Advanced
+
+```c++
+// Each reader thread creates a local accessor to `rcu`, which will hold
+// snapshots of `MyType`.
+simple_rcu::Rcu<MyType>::Local local(rcu);
+
+// Afterwards each reader thread can repeatedly fetch a const pointer to a
+// snapshot of the instance. This is faster than the simple usage above, since it
+// avoids the internal bookkeeping cost of a `thread_local` variable, at the cost
+// of explicitly maintaining a `Local` variable. It effectively involves only a
+// single atomic exchange (https://en.cppreference.com/w/cpp/atomic/atomic/exchange)
+// instruction.
+auto ref = local.ReadPtr();
+// `ref` now holds a `unique_ptr` to a stable, thread-local snapshot of
+// `const MyType`.
 ```
 
 See [rcu_test.cc](simple_rcu/rcu_test.cc) for more examples.
