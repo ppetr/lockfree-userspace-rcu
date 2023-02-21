@@ -18,7 +18,7 @@ auto rcu = std::make_shared<simple_rcu::Rcu<MyType>>();
 
 // Any thread can atomically update the value (can be also a `unique_ptr`,
 // which auto-converts to `shared_ptr`). This is a relatively slow operation
-/ (takes a lock internally).
+// (takes a lock internally).
 rcu->Update(std::make_shared<MyType>(...));
 ```
 
