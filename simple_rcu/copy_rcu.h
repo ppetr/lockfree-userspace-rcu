@@ -197,8 +197,14 @@ class CopyRcu {
   // It keeps a `std::weak_ptr` to `rcu` so that it unregisters from it if (and
   // only if) `rcu` is still alive when this thread is destroyed.
   static Local &GetThreadLocal(std::shared_ptr<CopyRcu> rcu) noexcept {
-    std::unique_ptr<Local> &local = ThreadLocalMap()[rcu.get()];
+    auto &local_map = ThreadLocalMap();
+    std::unique_ptr<Local> &local = local_map[rcu.get()];
     if (ABSL_PREDICT_FALSE(local == nullptr)) {
+      int deleted_count = CleanUpThreadLocal();
+      ABSL_DLOG_IF(INFO, deleted_count > 0)
+          << "Cleaned up " << deleted_count
+          << " expired `Local` instances from the thread-local map at "
+          << &local_map;
       local = absl::make_unique<Local>(std::move(rcu));
     }
     return *local;
