@@ -1,6 +1,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/utility/utility.h"
 #include "simple_rcu/local_3state_rcu.h"
@@ -66,14 +67,14 @@ class ReverseRcu {
   class Local final {
    public:
     // Thread-safe.
-    Local(ReverseRcu& rcu) LOCKS_EXCLUDED(rcu.lock_)
+    Local(ReverseRcu& rcu) ABSL_LOCKS_EXCLUDED(rcu.lock_)
         : rcu_(rcu), snapshot_depth_(0), local_rcu_() {
       // Allow `Snapshot` to `TryRead()` from the start.
       local_rcu_.ForceUpdate();
       absl::MutexLock mutex(&rcu_.lock_);
       rcu_.threads_.insert(this);
     }
-    ~Local() LOCKS_EXCLUDED(rcu_.lock_) {
+    ~Local() ABSL_LOCKS_EXCLUDED(rcu_.lock_) {
       absl::MutexLock mutex(&rcu_.lock_);
       rcu_.value_ += Collect();
       rcu_.threads_.erase(this);
@@ -86,7 +87,7 @@ class ReverseRcu {
 
    private:
     // Thread-compatible.
-    T Collect() EXCLUSIVE_LOCKS_REQUIRED(rcu_.lock_) {
+    T Collect() ABSL_EXCLUSIVE_LOCKS_REQUIRED(rcu_.lock_) {
       local_rcu_.ForceUpdate();
       return absl::exchange(local_rcu_.Update(), T());
     }
@@ -113,7 +114,7 @@ class ReverseRcu {
   // that have no `Local` instance at all.
   //
   // Thread-safe.
-  T Collect() LOCKS_EXCLUDED(lock_) {
+  T Collect() ABSL_LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
     for (Local* thread : threads_) {
       value_ += thread->Collect();
@@ -125,9 +126,9 @@ class ReverseRcu {
   absl::Mutex lock_;
   // The current value that has been collected from all thread-`Local`
   // instances.
-  T value_ GUARDED_BY(lock_);
+  T value_ ABSL_GUARDED_BY(lock_);
   // List of registered thread-`Local` instances.
-  absl::flat_hash_set<Local*> threads_ GUARDED_BY(lock_);
+  absl::flat_hash_set<Local*> threads_ ABSL_GUARDED_BY(lock_);
 };
 
 }  // namespace simple_rcu

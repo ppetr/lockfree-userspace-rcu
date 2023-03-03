@@ -17,8 +17,10 @@
 #include <utility>
 
 #include "absl/base/optimization.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/absl_log.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
@@ -172,7 +174,8 @@ class CopyRcu {
   // Thread-safe. This method isn't tied in any particular way to a `Local`
   // instance corresponding to the current thread, and can be called also by
   // threads that have no `Local` instance at all.
-  T Update(typename std::remove_const<T>::type value) LOCKS_EXCLUDED(lock_) {
+  T Update(typename std::remove_const<T>::type value)
+      ABSL_LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
     return UpdateLocked(std::move(value));
   }
@@ -181,7 +184,7 @@ class CopyRcu {
   // previous value.
   absl::optional<T> UpdateIf(typename std::remove_const<T>::type value,
                              absl::FunctionRef<bool(const T &)> pred)
-      LOCKS_EXCLUDED(lock_) {
+      ABSL_LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
     if (pred(value_)) {
       return absl::make_optional(UpdateLocked(std::move(value)));
@@ -205,6 +208,10 @@ class CopyRcu {
   // parent objects have been deleted (as determined by their internal
   // `std::weak_ptr<CopyRcu>`).
   // Returns the number of deleted instances.
+  //
+  // This function is called automatically by `GetThreadLocal` when it adds a
+  // new `Local` instance to the map, so in most cases it's not necessary to
+  // call it explicitly.
   static int CleanUpThreadLocal() noexcept {
     int deleted_count = 0;
     auto &map = ThreadLocalMap();
@@ -222,7 +229,7 @@ class CopyRcu {
 
  private:
   T UpdateLocked(typename std::remove_const<T>::type value)
-      EXCLUSIVE_LOCKS_REQUIRED(lock_) {
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
     for (Local *thread : threads_) {
       thread->Update(value);
     }
@@ -230,13 +237,13 @@ class CopyRcu {
     return value;
   }
 
-  void Register(Local &thread) LOCKS_EXCLUDED(lock_) {
+  void Register(Local &thread) ABSL_LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
     threads_.insert(&thread);
     thread.Update(value_);
   }
 
-  void Unregister(Local &thread) LOCKS_EXCLUDED(lock_) {
+  void Unregister(Local &thread) ABSL_LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
     threads_.erase(&thread);
   }
@@ -251,9 +258,9 @@ class CopyRcu {
   absl::Mutex lock_;
   // The current value that has been distributed to all thread-`Local`
   // instances.
-  MutableT value_ GUARDED_BY(lock_);
+  MutableT value_ ABSL_GUARDED_BY(lock_);
   // List of registered thread-`Local` instances.
-  absl::flat_hash_set<Local *> threads_ GUARDED_BY(lock_);
+  absl::flat_hash_set<Local *> threads_ ABSL_GUARDED_BY(lock_);
 };
 
 // A variant of `CopyRcu<T>::Local::Read()` that automatically maintains a
