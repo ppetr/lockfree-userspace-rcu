@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#ifndef _SIMPLE_RCU_COPY_RCU_H
+#define _SIMPLE_RCU_COPY_RCU_H
+
 #include <memory>
 #include <type_traits>
 #include <utility>
@@ -308,3 +311,5 @@ template <typename T>
 using Rcu = CopyRcu<std::shared_ptr<typename std::add_const<T>::type>>;
 
 }  // namespace simple_rcu
+
+#endif  // _SIMPLE_RCU_COPY_RCU_H
