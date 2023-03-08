@@ -27,6 +27,7 @@ rcu->Update(std::make_shared<MyType>(...));
 ```c++
 // Afterwards each reader thread can fetch a const pointer to a snapshot of the
 // instance. This is a lock-free operation.
+// See benchmark `BM_ReadSharedPtrsThreadLocal` below.
 auto ref = simple_rcu::ReadPtr(rcu);
 // `ref` now holds a `unique_ptr` to a stable, thread-local snapshot of
 // `const MyType`.
@@ -37,14 +38,14 @@ auto ref = simple_rcu::ReadPtr(rcu);
 ```c++
 // Each reader thread creates a local accessor to `rcu`, which will hold
 // snapshots of `MyType`.
-simple_rcu::Rcu<MyType>::Local local(rcu);
+simple_rcu::Rcu<MyType>::View local(rcu);
 
 // Afterwards the reader thread can repeatedly fetch a const pointer to a
-// snapshot of the instance. This is faster than the simple usage above, since it
-// avoids the internal bookkeeping cost of a `thread_local` variable, at the cost
-// of explicitly maintaining a `Local` variable. It effectively involves only a
-// single atomic exchange (https://en.cppreference.com/w/cpp/atomic/atomic/exchange)
-// instruction.
+// snapshot of the instance. This is faster than the simple usage above (see
+// benchmark `BM_Reads` below), since it avoids the internal bookkeeping cost of a
+// `thread_local` variable, at the cost of explicitly maintaining a `View`
+// variable. It effectively involves only a single atomic exchange
+// (https://en.cppreference.com/w/cpp/atomic/atomic/exchange) instruction.
 auto ref = local.ReadPtr();
 // `ref` now holds a `unique_ptr` to a stable, thread-local snapshot of
 // `const MyType`.
