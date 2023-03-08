@@ -24,8 +24,12 @@ schedtool -B -n10 $$ || true
 DIR="${BASE}/build/dev"
 mkdir -p "$DIR"
 cd "$DIR"
-cmake "$@" "$BASE"
-while echo Restarting ; sleep 1 ; do
-  find "${BASE}/simple_rcu" -name '*.h' -or -name '*.cc' \
-    | CTEST_OUTPUT_ON_FAILURE=1 entr -d make -j all -k test
+while true ; do
+  cmake "$@" "$BASE"
+  if ! find "${BASE}/simple_rcu" -name '*.h' -or -name '*.cc' \
+    | CTEST_OUTPUT_ON_FAILURE=1 entr -d /bin/sh -c "make -j all && ctest -R '_test$'" ; then
+    [ "$?" -eq 1 ] && break
+  fi
+  echo "Rerunning cmake"
+  sleep 3
 done
