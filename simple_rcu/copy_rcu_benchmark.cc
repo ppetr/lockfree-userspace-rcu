@@ -80,9 +80,7 @@ static void BM_Reads(benchmark::State& state) {
   }
 }
 BENCHMARK(BM_Reads)
-    ->Threads(1)
-    ->Threads(8)
-    ->Threads(64)
+    ->ThreadRange(1, 64)
     ->Arg(1)
     ->Arg(4)
     ->Setup([](const benchmark::State&) { Setup<int_fast32_t>(0); })
@@ -108,9 +106,7 @@ static void BM_ReadSharedPtrs(benchmark::State& state) {
   }
 }
 BENCHMARK(BM_ReadSharedPtrs)
-    ->Threads(1)
-    ->Threads(8)
-    ->Threads(64)
+    ->ThreadRange(1, 64)
     ->Arg(1)
     ->Arg(4)
     ->Setup([](const benchmark::State&) {
@@ -137,9 +133,7 @@ static void BM_ReadSharedPtrsThreadLocal(benchmark::State& state) {
   }
 }
 BENCHMARK(BM_ReadSharedPtrsThreadLocal)
-    ->Threads(1)
-    ->Threads(8)
-    ->Threads(64)
+    ->ThreadRange(1, 64)
     ->Arg(1)
     ->Arg(4)
     ->Setup([](const benchmark::State&) {
@@ -166,9 +160,7 @@ static void BM_Updates(benchmark::State& state) {
   }
 }
 BENCHMARK(BM_Updates)
-    ->Threads(1)
-    ->Threads(8)
-    ->Threads(64)
+    ->ThreadRange(1, 64)
     ->Arg(1)
     ->Arg(4)
     ->Setup([](const benchmark::State&) { Setup<int_fast32_t>(0); })
