@@ -30,7 +30,7 @@ namespace simple_rcu {
 // of them during the collect ("update") phase.
 //
 // `T` must define `T& operator+=(T&&)` (or a variant with any compatible
-// argument type) to combine values from thread-`Local` variables to a single
+// argument type) to combine values from thread-`View` variables to a single
 // one.
 //
 // This is a low-level class, on top of which we can build a more user-friendly
@@ -44,7 +44,7 @@ class ReverseRcu {
                     std::is_move_assignable<T>::value,
                 "T must be move constructible and assignable");
 
-  class Local;
+  class View;
 
   // Holds a (write) reference to a RCU value for the current thread.
   // The reference is guaranteed to be stable during the lifetime of `Snapshot`.
@@ -68,30 +68,30 @@ class ReverseRcu {
     T& operator*() noexcept { return registrar_.local_rcu_.Read(); }
 
    private:
-    Snapshot(Local& registrar) noexcept : registrar_(registrar) {
+    Snapshot(View& registrar) noexcept : registrar_(registrar) {
       registrar_.snapshot_depth_++;
     }
 
-    Local& registrar_;
+    View& registrar_;
 
-    friend class Local;
+    friend class View;
   };
 
   // Interface to the RCU, local to a particular writer thread.
   // Construction and destruction are thread-safe operations, but the `Write()`
   // method is only thread-compatible. Callers are expected to construct a
-  // separate `Local` instance for each reader thread.
-  class Local final {
+  // separate `View` instance for each reader thread.
+  class View final {
    public:
     // Thread-safe.
-    Local(ReverseRcu& rcu) ABSL_LOCKS_EXCLUDED(rcu.lock_)
+    View(ReverseRcu& rcu) ABSL_LOCKS_EXCLUDED(rcu.lock_)
         : rcu_(rcu), snapshot_depth_(0), local_rcu_() {
       // Allow `Snapshot` to `TryRead()` from the start.
       local_rcu_.ForceUpdate();
       absl::MutexLock mutex(&rcu_.lock_);
       rcu_.threads_.insert(this);
     }
-    ~Local() ABSL_LOCKS_EXCLUDED(rcu_.lock_) {
+    ~View() ABSL_LOCKS_EXCLUDED(rcu_.lock_) {
       absl::MutexLock mutex(&rcu_.lock_);
       rcu_.value_ += Collect();
       rcu_.threads_.erase(this);
@@ -122,18 +122,18 @@ class ReverseRcu {
   // Constructs a RCU with an initial value `T()`.
   ReverseRcu() : lock_(), value_(), threads_() {}
 
-  // Reads values from all registered `Local` instances, including ones that
+  // Reads values from all registered `View` instances, including ones that
   // have been destroyed since the last call.
   // Returns the collected value and resets the internal variable to `T()`.
   //
-  // This method isn't tied in any particular way to a `Local` instance
+  // This method isn't tied in any particular way to a `View` instance
   // corresponding to the current thread, and can be called also by threads
-  // that have no `Local` instance at all.
+  // that have no `View` instance at all.
   //
   // Thread-safe.
   T Collect() ABSL_LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
-    for (Local* thread : threads_) {
+    for (View* thread : threads_) {
       value_ += thread->Collect();
     }
     return absl::exchange(value_, T());
@@ -141,11 +141,11 @@ class ReverseRcu {
 
  private:
   absl::Mutex lock_;
-  // The current value that has been collected from all thread-`Local`
+  // The current value that has been collected from all thread-`View`
   // instances.
   T value_ ABSL_GUARDED_BY(lock_);
-  // List of registered thread-`Local` instances.
-  absl::flat_hash_set<Local*> threads_ ABSL_GUARDED_BY(lock_);
+  // List of registered thread-`View` instances.
+  absl::flat_hash_set<View*> threads_ ABSL_GUARDED_BY(lock_);
 };
 
 }  // namespace simple_rcu

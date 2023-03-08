@@ -73,7 +73,7 @@ static void BM_Reads(benchmark::State& state) {
       });
     }
   }
-  CopyRcu<int_fast32_t>::Local reader(context->rcu);
+  CopyRcu<int_fast32_t>::View reader(context->rcu);
   for (auto _ : state) {
     benchmark::DoNotOptimize(*reader.Read());
     benchmark::ClobberMemory();
@@ -101,7 +101,7 @@ static void BM_ReadSharedPtrs(benchmark::State& state) {
       });
     }
   }
-  Rcu<int_fast32_t>::Local local(context->rcu);
+  Rcu<int_fast32_t>::View local(context->rcu);
   for (auto _ : state) {
     benchmark::DoNotOptimize(*local.ReadPtr());
     benchmark::ClobberMemory();
@@ -152,7 +152,7 @@ static void BM_Updates(benchmark::State& state) {
   if (state.thread_index() == 0) {
     for (int i = 0; i < state.range(0); i++) {
       context->threads.emplace_back([&]() {
-        CopyRcu<int_fast32_t>::Local local(context->rcu);
+        CopyRcu<int_fast32_t>::View local(context->rcu);
         while (!context->finished.load()) {
           benchmark::DoNotOptimize(*local.Read());
         }

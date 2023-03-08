@@ -23,9 +23,9 @@ namespace {
 
 TEST(ReverseRcuTest, WriteAndCollect) {
   ReverseRcu<int> rcu;
-  ReverseRcu<int>::Local local1(rcu);
+  ReverseRcu<int>::View local1(rcu);
   {
-    ReverseRcu<int>::Local local2(rcu);
+    ReverseRcu<int>::View local2(rcu);
     *local2.Write() += 10;
   }
   *local1.Write() += 1;
@@ -49,21 +49,21 @@ TEST(ReverseRcuTest, WriteAndCollectMoveable) {
     int value;
   };
   ReverseRcu<Value> rcu;
-  ReverseRcu<Value>::Local local(rcu);
+  ReverseRcu<Value>::View local(rcu);
   local.Write()->value += 42;
   EXPECT_EQ(rcu.Collect().value, 42) << "Should receive a moved value";
 }
 
 TEST(ReverseRcuTest, ThreadLocalWriteAndCollect) {
   static ReverseRcu<int> rcu;
-  static thread_local ReverseRcu<int>::Local local(rcu);
+  static thread_local ReverseRcu<int>::View local(rcu);
   *local.Write() += 42;
   EXPECT_EQ(rcu.Collect(), 42) << "Thread-local must receive the value";
 }
 
 TEST(ReverseRcuTest, WriteRemainsStable) {
   ReverseRcu<int> rcu;
-  ReverseRcu<int>::Local local(rcu);
+  ReverseRcu<int>::View local(rcu);
   auto write_ref1 = local.Write();
   *write_ref1 = 42;
   EXPECT_EQ(rcu.Collect(), 0) << "The value should not be collected yet";
