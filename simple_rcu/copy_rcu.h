@@ -141,11 +141,15 @@ class CopyRcu {
       // whole object becomes protected during its construction. This way
       // `CopyRcu` will never observe a partially constructed `Local` instance.
       Local(CopyRcu &rcu_, const absl::MutexLock &)
-          ABSL_EXCLUSIVE_LOCKS_REQUIRED(rcu_.lock_)
-          : local_rcu(rcu_.RegisterLocked(*this)), rcu(&rcu_) {}
+          // ABSL_EXCLUSIVE_LOCKS_REQUIRED(rcu_.lock_)
+          : local_rcu(rcu_.RegisterLocked(*this)), rcu(&rcu_) {
+        rcu_.lock_.AssertHeld();
+      }
       Local(std::shared_ptr<CopyRcu> rcu_, const absl::MutexLock &)
-          ABSL_EXCLUSIVE_LOCKS_REQUIRED(rcu_->lock_)
-          : local_rcu(rcu_->RegisterLocked(*this)), rcu(rcu_) {}
+          // ABSL_EXCLUSIVE_LOCKS_REQUIRED(rcu_->lock_)
+          : local_rcu(rcu_->RegisterLocked(*this)), rcu(rcu_) {
+        rcu_->lock_.AssertHeld();
+      }
       ~Local() {
         CopyRcu *const *ptr = absl::get_if<0>(&rcu);
         if (ptr != nullptr) {
