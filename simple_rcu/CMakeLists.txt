@@ -29,7 +29,7 @@ target_link_libraries(copy_rcu_test copy_rcu gmock gtest_main)
 add_test(NAME copy_rcu_test COMMAND copy_rcu_test)
 
 add_executable(copy_rcu_benchmark copy_rcu_benchmark.cc)
-target_link_libraries(copy_rcu_benchmark copy_rcu benchmark::benchmark_main)
+target_link_libraries(copy_rcu_benchmark copy_rcu absl::absl_check absl::optional benchmark::benchmark_main)
 add_test(NAME copy_rcu_benchmark COMMAND copy_rcu_benchmark)
 
 

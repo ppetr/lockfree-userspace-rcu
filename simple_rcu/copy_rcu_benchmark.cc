@@ -16,98 +16,144 @@
 #include <deque>
 #include <thread>
 
+#include "absl/log/absl_check.h"
+#include "absl/types/optional.h"
 #include "benchmark/benchmark.h"
 #include "simple_rcu/copy_rcu.h"
 
 namespace simple_rcu {
 namespace {
 
-struct ThreadBundle {
-  ThreadBundle() : finished(false) {}
-  ~ThreadBundle() {
+template <typename T>
+struct Context {
+  Context(T initial_value)
+      : rcu(std::make_shared<CopyRcu<T>>(std::move(initial_value))),
+        finished(false) {}
+  ~Context() {
     finished.store(true);
     for (auto& thread : threads) {
       thread.join();
     }
   }
 
+  std::shared_ptr<CopyRcu<T>> rcu;
   std::atomic<bool> finished;
   std::deque<std::thread> threads;
 };
 
+template <typename T>
+static absl::optional<Context<T>>& StaticContext() {
+  static absl::optional<Context<T>> rcu;
+  return rcu;
+}
+
+template <typename T>
+static void Setup(T initial_value) {
+  auto& context = StaticContext<T>();
+  ABSL_CHECK(!context.has_value()) << "Context not teared down";
+  context.emplace(std::move(initial_value));
+}
+
+template <typename T>
+static void Teardown(const benchmark::State& state) {
+  auto& context = StaticContext<T>();
+  ABSL_CHECK(context.has_value()) << "Mismatched Teardown";
+  context.reset();
+}
+
 static void BM_Reads(benchmark::State& state) {
-  const auto rcu = std::make_shared<CopyRcu<int_fast32_t>>();
-  ThreadBundle updater;
+  static auto& context = StaticContext<int_fast32_t>();
   if (state.thread_index() == 0) {
     for (int i = 0; i < state.range(0); i++) {
-      updater.threads.emplace_back([&]() {
+      context->threads.emplace_back([&]() {
         int_fast32_t updates = 0;
-        while (!updater.finished.load()) {
-          benchmark::DoNotOptimize(rcu->Update(updates++));
+        while (!context->finished.load()) {
+          benchmark::DoNotOptimize(context->rcu->Update(updates++));
         }
       });
     }
   }
-  CopyRcu<int_fast32_t>::Local reader(rcu);
+  CopyRcu<int_fast32_t>::Local reader(context->rcu);
   for (auto _ : state) {
     benchmark::DoNotOptimize(*reader.Read());
     benchmark::ClobberMemory();
   }
 }
-BENCHMARK(BM_Reads)->ThreadRange(1, 3)->Arg(1)->Arg(4);
+BENCHMARK(BM_Reads)
+    ->Threads(1)
+    ->Threads(8)
+    ->Threads(64)
+    ->Arg(1)
+    ->Arg(4)
+    ->Setup([](const benchmark::State&) { Setup<int_fast32_t>(0); })
+    ->Teardown(Teardown<int_fast32_t>);
 
 static void BM_ReadSharedPtrs(benchmark::State& state) {
-  Rcu<int_fast32_t> rcu(std::make_shared<int_fast32_t>(0));
-  ThreadBundle updater;
+  static auto& context = StaticContext<std::shared_ptr<const int_fast32_t>>();
   if (state.thread_index() == 0) {
     for (int i = 0; i < state.range(0); i++) {
-      updater.threads.emplace_back([&]() {
+      context->threads.emplace_back([&]() {
         int_fast32_t updates = 0;
-        while (!updater.finished.load()) {
-          benchmark::DoNotOptimize(
-              rcu.Update(std::make_shared<int_fast32_t>(updates++)));
+        while (!context->finished.load()) {
+          benchmark::DoNotOptimize(*context->rcu->Update(
+              std::make_shared<const int_fast32_t>(updates++)));
         }
       });
     }
   }
-  Rcu<int_fast32_t>::Local local(rcu);
+  Rcu<int_fast32_t>::Local local(context->rcu);
   for (auto _ : state) {
     benchmark::DoNotOptimize(*local.ReadPtr());
     benchmark::ClobberMemory();
   }
 }
-BENCHMARK(BM_ReadSharedPtrs)->ThreadRange(1, 3)->Arg(1)->Arg(4);
+BENCHMARK(BM_ReadSharedPtrs)
+    ->Threads(1)
+    ->Threads(8)
+    ->Threads(64)
+    ->Arg(1)
+    ->Arg(4)
+    ->Setup([](const benchmark::State&) {
+      Setup(std::make_shared<const int_fast32_t>(0));
+    })
+    ->Teardown(Teardown<std::shared_ptr<const int_fast32_t>>);
 
 static void BM_ReadSharedPtrsThreadLocal(benchmark::State& state) {
-  const auto rcu =
-      std::make_shared<Rcu<int_fast32_t>>(std::make_shared<int_fast32_t>(0));
-  ThreadBundle updater;
+  static auto& context = StaticContext<std::shared_ptr<const int_fast32_t>>();
   if (state.thread_index() == 0) {
     for (int i = 0; i < state.range(0); i++) {
-      updater.threads.emplace_back([&]() {
+      context->threads.emplace_back([&]() {
         int_fast32_t updates = 0;
-        while (!updater.finished.load()) {
-          benchmark::DoNotOptimize(
-              rcu->Update(std::make_shared<int_fast32_t>(updates++)));
+        while (!context->finished.load()) {
+          benchmark::DoNotOptimize(*context->rcu->Update(
+              std::make_shared<const int_fast32_t>(updates++)));
         }
       });
     }
   }
   for (auto _ : state) {
-    benchmark::DoNotOptimize(*ReadPtr(rcu));
+    benchmark::DoNotOptimize(*ReadPtr(context->rcu));
     benchmark::ClobberMemory();
   }
 }
-BENCHMARK(BM_ReadSharedPtrsThreadLocal)->ThreadRange(1, 3)->Arg(1)->Arg(4);
+BENCHMARK(BM_ReadSharedPtrsThreadLocal)
+    ->Threads(1)
+    ->Threads(8)
+    ->Threads(64)
+    ->Arg(1)
+    ->Arg(4)
+    ->Setup([](const benchmark::State&) {
+      Setup(std::make_shared<const int_fast32_t>(0));
+    })
+    ->Teardown(Teardown<std::shared_ptr<const int_fast32_t>>);
 
 static void BM_Updates(benchmark::State& state) {
-  const auto rcu = std::make_shared<CopyRcu<int_fast32_t>>();
-  ThreadBundle reader;
+  static auto& context = StaticContext<int_fast32_t>();
   if (state.thread_index() == 0) {
     for (int i = 0; i < state.range(0); i++) {
-      reader.threads.emplace_back([&]() {
-        CopyRcu<int_fast32_t>::Local local(rcu);
-        while (!reader.finished.load()) {
+      context->threads.emplace_back([&]() {
+        CopyRcu<int_fast32_t>::Local local(context->rcu);
+        while (!context->finished.load()) {
           benchmark::DoNotOptimize(*local.Read());
         }
       });
@@ -115,11 +161,18 @@ static void BM_Updates(benchmark::State& state) {
   }
   int_fast32_t updates = 0;
   for (auto _ : state) {
-    benchmark::DoNotOptimize(rcu->Update(++updates));
+    benchmark::DoNotOptimize(context->rcu->Update(++updates));
     benchmark::ClobberMemory();
   }
 }
-BENCHMARK(BM_Updates)->ThreadRange(1, 3)->Arg(1)->Arg(4);
+BENCHMARK(BM_Updates)
+    ->Threads(1)
+    ->Threads(8)
+    ->Threads(64)
+    ->Arg(1)
+    ->Arg(4)
+    ->Setup([](const benchmark::State&) { Setup<int_fast32_t>(0); })
+    ->Teardown(Teardown<int_fast32_t>);
 
 }  // namespace
 }  // namespace simple_rcu
