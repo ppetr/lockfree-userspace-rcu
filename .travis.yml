@@ -6,7 +6,7 @@ before_script:
   - cmake ..
 script:
   - make -j
-  - make test
+  - ctest -R '_test$'
 compiler:
   - clang
   - gcc
@@ -26,11 +26,18 @@ os:
   #- osx
 jobs:
   include:
-    compiler: gcc
-    env:
-      - CXXFLAGS=-std=c++2a
-      - CC=gcc-11
-      - CXX=g++-11
+    - name: gcc-11 C++20
+      compiler: gcc
+      env:
+        - CXXFLAGS=-std=c++2a
+        - CC=gcc-11
+        - CXX=g++-11
+    - name: Address Sanitizer
+      # https://github.com/google/sanitizers/wiki/AddressSanitizer
+      compiler: clang
+      env:
+        - CXXFLAGS="-fsanitize=address -fno-omit-frame-pointer -O1"
+        - RUN_HAVE_STD_REGEX=0
   allow_failures:
     - compiler: gcc
       env: CXXFLAGS=-std=c++2a
@@ -39,10 +46,3 @@ jobs:
         - CXXFLAGS=-std=c++2a
         - CC=gcc-11
         - CXX=g++-11
-  include:
-    - name: Address Sanitizer
-      compiler: clang
-      env:
-        - CXXFLAGS="-fsanitize=address -fno-omit-frame-pointer -O1"
-        - RUN_HAVE_STD_REGEX=0
-      # https://github.com/google/sanitizers/wiki/AddressSanitizer
