@@ -1,5 +1,6 @@
 ---
 language: cpp
+dist: bionic
 before_script:
   - mkdir -p build
   - cd build
