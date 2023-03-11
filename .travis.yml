@@ -32,6 +32,7 @@ jobs:
   include:
     - name: gcc-11 C++20
       compiler: gcc
+      dist: jammy
       env:
         - CXXFLAGS=-std=c++2a
         - CC=gcc-11
