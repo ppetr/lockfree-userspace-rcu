@@ -25,7 +25,12 @@ DIR="${BASE}/build/dev"
 mkdir -p "$DIR"
 cd "$DIR"
 while true ; do
-  cmake "$@" "$BASE"
+  # When compiling with
+  # -DCMAKE_TOOLCHAIN_FILE="$(pwd)/devel/toolchain-clang11.cmake"
+  # flag CMAKE_EXPORT_COMPILE_COMMANDS produces
+  # build/dev/compile_commands.json. Symlink it to the project's root directory
+  # to enable linting in editors that support this feature.
+  CMAKE_EXPORT_COMPILE_COMMANDS=1 cmake "$@" "$BASE"
   if ! find "${BASE}/simple_rcu" -name '*.h' -or -name '*.cc' \
     | CTEST_OUTPUT_ON_FAILURE=1 entr -d /bin/sh -c "make -j all && ctest -R '_test$'" ; then
     [ "$?" -eq 1 ] && break

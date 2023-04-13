@@ -2,6 +2,9 @@ build*/
 *.sw[op]
 *.orig
 
+# https://clang.llvm.org/docs/JSONCompilationDatabase.html
+compile_commands.json
+
 # Prerequisites
 *.d
 
