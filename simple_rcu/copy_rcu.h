@@ -20,9 +20,7 @@
 #include <utility>
 
 #include "absl/base/attributes.h"
-#include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_log.h"
 #include "absl/memory/memory.h"
@@ -30,6 +28,7 @@
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "simple_rcu/local_3state_rcu.h"
+#include "simple_rcu/thread_local.h"
 
 namespace simple_rcu {
 
@@ -166,13 +165,6 @@ class CopyRcu {
       const absl::variant<CopyRcu *, const std::weak_ptr<CopyRcu>> rcu;
     };
 
-    // Returns `true` iff this `View` references a `CopyRcu` using a weak
-    // pointer and this pointer has expired.
-    bool Abandoned() const {
-      const std::weak_ptr<CopyRcu> *ptr = absl::get_if<1>(&local_.rcu);
-      return (ptr != nullptr) && ptr->expired();
-    }
-
     // Incremented with each `Snapshot` instance. Ensures that `TryRead` is
     // invoked only for the outermost `Snapshot`, keeping its value unchanged
     // for its whole lifetime.
@@ -220,18 +212,16 @@ class CopyRcu {
   // The returned reference is valid until a next call to `GetThreadLocal` or
   // `CleanUpThreadLocal` by the same thread.
   static View &GetThreadLocal(std::shared_ptr<CopyRcu> rcu) noexcept {
-    auto &local_map = ThreadLocalMap();
-    auto it = local_map.find(rcu.get());
-    if (ABSL_PREDICT_FALSE(it == local_map.end())) {
+    auto pair =
+        ThreadLocal<std::unique_ptr<View>, CopyRcu>::Get(std::move(rcu));
+    if (pair.second) {  // Inserted.
+      pair.first.local() = absl::make_unique<View>(pair.first.shared());
       int deleted_count = CleanUpThreadLocal();
       ABSL_DLOG_IF(INFO, deleted_count > 0)
           << "Cleaned up " << deleted_count
-          << " expired `View` instances from the thread-local map at "
-          << &local_map;
-      return *(local_map[rcu.get()] = absl::make_unique<View>(rcu));
-    } else {
-      return *it->second;
+          << " expired `View` instances from the thread-local map";
     }
+    return *pair.first.local();
   }
 
   // Cleans up `View` instances created by `GetThreadLocal`, whose `CopyRcu`
@@ -243,17 +233,7 @@ class CopyRcu {
   // new `View` instance to the map, so in most cases it's not necessary to
   // call it explicitly.
   static int CleanUpThreadLocal() noexcept {
-    int deleted_count = 0;
-    auto &map = ThreadLocalMap();
-    for (auto it = map.begin(); it != map.end();) {
-      if (it->second->Abandoned()) {
-        map.erase(it++);
-        deleted_count++;
-      } else {
-        it++;
-      }
-    }
-    return deleted_count;
+    return ThreadLocal<std::unique_ptr<View>, CopyRcu>::CleanUp();
   }
 
  private:
@@ -278,13 +258,6 @@ class CopyRcu {
   void Unregister(typename View::Local &local) ABSL_LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
     locals_.erase(&local);
-  }
-
-  static absl::flat_hash_map<CopyRcu *, std::unique_ptr<View>>
-      &ThreadLocalMap() {
-    static thread_local absl::flat_hash_map<CopyRcu *, std::unique_ptr<View>>
-        local_map;
-    return local_map;
   }
 
   absl::Mutex lock_;

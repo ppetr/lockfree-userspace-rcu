@@ -20,9 +20,13 @@ add_executable(local_3state_rcu_test local_3state_rcu_test.cc)
 target_link_libraries(local_3state_rcu_test gtest_main)
 add_test(NAME local_3state_rcu_test COMMAND local_3state_rcu_test)
 
+add_library(thread_local INTERFACE)
+target_include_directories(thread_local INTERFACE .)
+target_link_libraries(thread_local INTERFACE absl::absl_check absl::core_headers)
+
 add_library(copy_rcu INTERFACE)
 target_include_directories(copy_rcu INTERFACE .)
-target_link_libraries(copy_rcu INTERFACE local_3state_rcu absl::absl_log absl::core_headers absl::flat_hash_map absl::flat_hash_set absl::function_ref absl::memory absl::optional absl::synchronization absl::variant atomic)
+target_link_libraries(copy_rcu INTERFACE local_3state_rcu thread_local absl::core_headers absl::flat_hash_map absl::flat_hash_set absl::function_ref absl::absl_log absl::memory absl::optional absl::synchronization absl::variant atomic)
 
 add_executable(copy_rcu_test copy_rcu_test.cc)
 target_link_libraries(copy_rcu_test copy_rcu gmock gtest_main)
