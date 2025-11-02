@@ -16,7 +16,7 @@ cmake_minimum_required(VERSION 3.11)
 
 enable_testing()
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 # Set variables for subdirectories.
 # See https://stackoverflow.com/a/3769269/1333025.
 set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL

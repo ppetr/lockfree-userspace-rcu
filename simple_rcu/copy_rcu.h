@@ -15,6 +15,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
 #include "simple_rcu/local_3state_rcu.h"
@@ -69,13 +70,13 @@ class CopyRcu {
   class Local final {
    public:
     // Thread-safe.
-    Local(CopyRcu &rcu) LOCKS_EXCLUDED(rcu.lock_)
+    Local(CopyRcu &rcu) ABSL_LOCKS_EXCLUDED(rcu.lock_)
         : rcu_(rcu), snapshot_depth_(0), local_rcu_() {
       absl::MutexLock mutex(&rcu_.lock_);
       rcu_.threads_.insert(this);
       Update(rcu_.value_);
     }
-    ~Local() LOCKS_EXCLUDED(rcu_.lock_) {
+    ~Local() ABSL_LOCKS_EXCLUDED(rcu_.lock_) {
       absl::MutexLock mutex(&rcu_.lock_);
       rcu_.threads_.erase(this);
     }
@@ -120,7 +121,7 @@ class CopyRcu {
 
    private:
     // Thread-compatible.
-    MutableT Update(MutableT value) EXCLUSIVE_LOCKS_REQUIRED(rcu_.lock_) {
+    MutableT Update(MutableT value) ABSL_EXCLUSIVE_LOCKS_REQUIRED(rcu_.lock_) {
       local_rcu_.Update() = std::move(value);
       local_rcu_.ForceUpdate();
       return std::move(local_rcu_.Update());
@@ -148,7 +149,8 @@ class CopyRcu {
   // Thread-safe. This method isn't tied in any particular way to a `Local`
   // instance corresponding to the current thread, and can be called also by
   // threads that have no `Local` instance at all.
-  T Update(typename std::remove_const<T>::type value) LOCKS_EXCLUDED(lock_) {
+  T Update(typename std::remove_const<T>::type value)
+      ABSL_LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
     return UpdateLocked(std::move(value));
   }
@@ -157,7 +159,7 @@ class CopyRcu {
   // previous value.
   absl::optional<T> UpdateIf(typename std::remove_const<T>::type value,
                              absl::FunctionRef<bool(const T &)> pred)
-      LOCKS_EXCLUDED(lock_) {
+      ABSL_LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
     if (pred(value_)) {
       return absl::make_optional(UpdateLocked(std::move(value)));
@@ -168,7 +170,7 @@ class CopyRcu {
 
  private:
   T UpdateLocked(typename std::remove_const<T>::type value)
-      EXCLUSIVE_LOCKS_REQUIRED(lock_) {
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
     for (Local *thread : threads_) {
       thread->Update(value);
     }
@@ -179,9 +181,9 @@ class CopyRcu {
   absl::Mutex lock_;
   // The current value that has been distributed to all thread-`Local`
   // instances.
-  MutableT value_ GUARDED_BY(lock_);
+  MutableT value_ ABSL_GUARDED_BY(lock_);
   // List of registered thread-`Local` instances.
-  absl::flat_hash_set<Local *> threads_ GUARDED_BY(lock_);
+  absl::flat_hash_set<Local *> threads_ ABSL_GUARDED_BY(lock_);
 };
 
 // By using `CopyRcu<shared_ptr<const T>>` we accomplish a RCU implementation

@@ -22,7 +22,7 @@ add_test(NAME local_3state_rcu_test COMMAND local_3state_rcu_test)
 
 add_library(copy_rcu INTERFACE)
 target_include_directories(copy_rcu INTERFACE .)
-target_link_libraries(copy_rcu INTERFACE local_3state_rcu absl::flat_hash_set absl::function_ref absl::optional absl::synchronization atomic)
+target_link_libraries(copy_rcu INTERFACE local_3state_rcu absl::base absl::flat_hash_set absl::function_ref absl::optional absl::synchronization atomic)
 
 add_executable(copy_rcu_test copy_rcu_test.cc)
 target_link_libraries(copy_rcu_test copy_rcu gmock gtest_main)
@@ -36,7 +36,7 @@ add_test(NAME copy_rcu_benchmark COMMAND copy_rcu_benchmark)
 
 add_library(reverse_rcu INTERFACE)
 target_include_directories(reverse_rcu INTERFACE .)
-target_link_libraries(reverse_rcu INTERFACE local_3state_rcu absl::flat_hash_set absl::synchronization absl::utility atomic)
+target_link_libraries(reverse_rcu INTERFACE local_3state_rcu absl::base absl::flat_hash_set absl::synchronization absl::utility atomic)
 
 add_executable(reverse_rcu_test reverse_rcu_test.cc)
 target_link_libraries(reverse_rcu_test reverse_rcu gtest_main)
