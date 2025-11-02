@@ -32,6 +32,14 @@ add_executable(copy_rcu_benchmark copy_rcu_benchmark.cc)
 target_link_libraries(copy_rcu_benchmark copy_rcu benchmark::benchmark_main)
 add_test(NAME copy_rcu_benchmark COMMAND copy_rcu_benchmark)
 
+add_library(lockfree_metric INTERFACE)
+target_include_directories(lockfree_metric INTERFACE .)
+target_link_libraries(lockfree_metric INTERFACE local_3state_rcu absl::base absl::check absl::log absl::function_ref atomic)
+
+add_executable(lockfree_metric_test lockfree_metric_test.cc)
+target_link_libraries(lockfree_metric_test lockfree_metric absl::random_random absl::synchronization absl::time gmock gtest_main)
+add_test(NAME lockfree_metric_test COMMAND lockfree_metric_test)
+
 
 
 add_library(reverse_rcu INTERFACE)

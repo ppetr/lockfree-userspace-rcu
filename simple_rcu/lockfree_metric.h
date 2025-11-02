@@ -28,122 +28,92 @@
 namespace simple_rcu {
 
 template <typename T>
-class LocalLockFreeMetric {
+class Local3StateExchange {
  public:
-  const T& Update(absl::FunctionRef<void(T&) const> f) {
-    bool collected;
-    {
-      Value& old = rcu_.Update();
-      f(old.primary);
-      LOG(INFO) << "Passing update value: " << old.primary << "@"
-                << int{old.version};
-      collected = rcu_.ForceUpdate();
-    }
-    Value& owned = rcu_.Update();
-    if (owned.version > update_version_) {
-      DCHECK(collected);
-      LOG(INFO) << "Received a newer version from the collect thread: "
-                << owned.primary << "@" << int{owned.version};
-      copy_from_collect_ = owned.primary;
-      update_version_ = owned.version;
-    } else if (owned.version < update_version_) {
-      LOG(INFO) << "Updating an old value that was " << owned.primary << "@"
-                << int{owned.version};
-      owned.primary = copy_from_collect_;
-      owned.version = update_version_;
-    }
-    f(owned.primary);
-    LOG(INFO) << "Current value: " << owned.primary << "@"
-              << int{owned.version};
-    // Invariant: `owned` holds a value at `update_version_`.
-    return owned.primary;
-    /*
-    Value* const reclaiming = rcu_.ReclaimByUpdate();
-    {
-      Value& old = rcu_.Update();
-      if (reclaiming != nullptr) {
-        // The reclaimed value transfers a copy of its `primary` created by
-        // the `Collect` method to avoid copying `T` while updating.
-        std::swap(old.primary, reclaiming->collect_copy);
-      }
-      f(old.primary);
-      if (rcu_.ForceUpdate() && (reclaiming == nullptr)) {
-        // The value in `old.primary` was passed already to the collector,
-        // therefore we must not update the currently owned, returned value.
-        return rcu_.Update().primary;
-      }
-      if (reclaiming != nullptr) {
-        DCHECK_EQ(&rcu_.Update(), reclaiming);
-      }
-    }
-    Value& owned = rcu_.Update();
-    f(owned.primary);
-    return owned.primary;
-    */
+  // TODO: Symmetry - everything except `previous_...` indices.
+  Local3StateExchange()
+      : left_index_(0),
+        previous_left_(1),
+        passing_index_(1),
+        right_index_(2),
+        previous_right_(0) {}
+
+  const T& Left() const { return values_[left_index_]; }
+  T& Left() { return values_[left_index_]; }
+
+  std::pair<T * absl_nonnull, bool> PassLeft() {
+    const Index old_index = left_index_;
+    left_index_ =
+        passing_index_.exchange(left_index_, std::memory_order_acq_rel);
+    return {&Left(), std::exchange(previous_left_, old_index) != old_index};
   }
 
-  template <typename R>
-  std::optional<R> Collect(absl::FunctionRef<R(T&)> f) {
-    if (rcu_.TryRead()) {
-      if (Value& owned = rcu_.Read(); owned.version == collect_version_) {
-        collect_version_ = ++owned.version;
-        LOG(INFO) << "Collected value " << owned.primary << "@"
-                  << int{owned.version};
-        return std::make_optional<R>(f(owned.primary));
-      }
-    }
-    LOG(INFO) << "No value to collect";
-    return std::nullopt;
-    /*
-    // Prepare a copy for the updater, and also destroy any previous value.
-    owned.collect_copy = owned.primary;
-    return result;
-    */
-  }
-  bool Collect(absl::FunctionRef<void(T&)> f) {
-    if (rcu_.TryRead()) {
-      if (Value& owned = rcu_.Read(); owned.version == collect_version_) {
-        collect_version_ = ++owned.version;
-        LOG(INFO) << "Collected value " << owned.primary << "@"
-                  << int{owned.version};
-        f(owned.primary);
-        return true;
-      }
-    }
-    LOG(INFO) << "No value to collect";
-    return false;
-    /*
-    f(owned.primary);
-    owned.version++;
-    // Prepare a copy for the updater, and also destroy any previous value.
-    owned.collect_copy = owned.primary;
-    */
-  }
+  const T& Right() const { return values_[right_index_]; }
+  T& Right() { return values_[right_index_]; }
 
-  std::optional<T> Collect() {
-    return Collect<T>([](T& ref) { return std::exchange(ref, T{}); });
+  std::pair<T * absl_nonnull, bool> PassRight() {
+    const Index old_index = right_index_;
+    right_index_ =
+        passing_index_.exchange(right_index_, std::memory_order_acq_rel);
+    return {&Right(), std::exchange(previous_right_, old_index) != old_index};
   }
 
  private:
-  struct Value {
-    int_fast8_t version = 0;
-    T primary;
-    T collect_copy;
-  };
+  // TODO: proper type like in L3SR
+  using Index = int_fast8_t;
 
-  template <typename U>
-  static void OptionalSwap(std::optional<U>& left, U& right) {
-    if (left.has_value()) {
-      std::swap(*left, right);
+  Index left_index_;
+  Index previous_left_;
+  std::atomic<Index> passing_index_;
+  Index right_index_;
+  Index previous_right_;
+  std::array<T, 3> values_;
+};
+
+template <typename T>
+class LocalLockFreeMetric {
+ public:
+  void Update(T value) {
+    exchange_.Left().seq.emplace_back(value);
+    auto [next, exchanged] = exchange_.PassLeft();
+    if (next->seq.empty()) {
+      next->start = update_index_;
+    }
+    CHECK_EQ(next->start + next->seq.size(), update_index_)
+        << "next.start = " << next->start;
+    update_index_++;
+    next->seq.push_back(std::move(value));
+  }
+
+  std::deque<T> Collect() {
+    auto [next, exchanged] = exchange_.PassRight();
+    const int_fast32_t seen = collect_index_ - next->start;
+    next->start = collect_index_;
+    if (seen < 0) {
+      collect_index_ += next->seq.size();
+      return std::exchange(next->seq, {});
+    } else if (seen < next->seq.size()) {
+      CHECK_GE(seen, 0) << "next.start = " << next->start
+                        << ", next.seq.size() = " << next->seq.size()
+                        << ", collect_index_ = " << collect_index_;
+      next->seq.erase(next->seq.begin(), next->seq.begin() + seen);
+      collect_index_ += next->seq.size();
+      return std::exchange(next->seq, {});
     } else {
-      left = std::move(right);
+      next->seq.clear();
+      return {};
     }
   }
 
-  Local3StateRcu<Value> rcu_;
-  int_fast8_t update_version_ = 0;
-  int_fast8_t collect_version_ = 0;
-  T copy_from_collect_;
+ private:
+  struct Slice {
+    int_fast32_t start = 0;
+    std::deque<T> seq;
+  };
+
+  int_fast32_t update_index_ = 0;
+  int_fast32_t collect_index_ = 0;
+  Local3StateExchange<Slice> exchange_;
 };
 
 }  // namespace simple_rcu
