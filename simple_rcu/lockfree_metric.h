@@ -30,43 +30,45 @@ namespace simple_rcu {
 template <typename T>
 class Local3StateExchange {
  public:
-  // TODO: Symmetry - everything except `previous_...` indices.
-  Local3StateExchange()
-      : left_index_(0),
-        previous_left_(1),
-        passing_index_(1),
-        right_index_(2),
-        previous_right_(0) {}
+  Local3StateExchange() : left_(0), passing_(1), right_(2) {}
 
-  const T& Left() const { return values_[left_index_]; }
-  T& Left() { return values_[left_index_]; }
+  const T& Left() const { return values_[left_]; }
+  T& Left() { return values_[left_]; }
 
   std::pair<T * absl_nonnull, bool> PassLeft() {
-    const Index old_index = left_index_;
-    left_index_ =
-        passing_index_.exchange(left_index_, std::memory_order_acq_rel);
-    return {&Left(), std::exchange(previous_left_, old_index) != old_index};
+    const Index received = passing_.exchange(left_, std::memory_order_acq_rel);
+    left_ = received & kIndexMask;
+    return {&Left(), received & kByRightMask};
   }
 
-  const T& Right() const { return values_[right_index_]; }
-  T& Right() { return values_[right_index_]; }
+  const T& Right() const { return values_[right_]; }
+  T& Right() { return values_[right_]; }
 
   std::pair<T * absl_nonnull, bool> PassRight() {
-    const Index old_index = right_index_;
-    right_index_ =
-        passing_index_.exchange(right_index_, std::memory_order_acq_rel);
-    return {&Right(), std::exchange(previous_right_, old_index) != old_index};
-  }
+    const Index received =
+        passing_.exchange(right_ | kByRightMask, std::memory_order_acq_rel);
+    right_ = received & kIndexMask;
+    return {&Right(), !(received & kByRightMask)};
+  };
 
  private:
-  // TODO: proper type like in L3SR
+#ifdef __cpp_lib_atomic_lock_free_type_aliases
+  using Index = typename std::atomic_signed_lock_free::value_type;
+#else
   using Index = int_fast8_t;
+#endif
+#ifdef __cpp_lib_atomic_is_always_lock_free
+  static_assert(std::atomic<Index>::is_always_lock_free,
+                "Not lock-free on this architecture, please report this as a "
+                "bug on the project's GitHub page");
+#endif
 
-  Index left_index_;
-  Index previous_left_;
-  std::atomic<Index> passing_index_;
-  Index right_index_;
-  Index previous_right_;
+  constexpr static Index kIndexMask = 3;
+  constexpr static Index kByRightMask = 4;
+
+  Index left_;
+  std::atomic<Index> passing_;
+  Index right_;
   std::array<T, 3> values_;
 };
 

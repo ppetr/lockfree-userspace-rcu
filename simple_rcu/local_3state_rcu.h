@@ -18,6 +18,7 @@
 #include <array>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 
 namespace simple_rcu {
 
@@ -181,7 +182,7 @@ class Local3StateRcu {
 #ifdef __cpp_lib_atomic_lock_free_type_aliases
   using Index = typename std::atomic_signed_lock_free::value_type;
 #else
-  using Index = std::ptrdiff_t;
+  using Index = int_fast8_t;
 #endif
 #ifdef __cpp_lib_atomic_is_always_lock_free
   static_assert(std::atomic<Index>::is_always_lock_free,
