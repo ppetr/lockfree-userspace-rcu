@@ -19,11 +19,16 @@
 #include <type_traits>
 #include <utility>
 
-#include "absl/base/nullability.h"
+// TODO #include "absl/base/nullability.h"
 #include "absl/functional/function_ref.h"
-#include "absl/log/check.h"
-#include "absl/log/log.h"
+#include "absl/log/absl_check.h"
+#include "absl/log/absl_log.h"
 #include "simple_rcu/local_3state_rcu.h"
+
+// TODO
+#ifndef absl_nonnull
+#define absl_nonnull
+#endif
 
 namespace simple_rcu {
 
@@ -84,7 +89,7 @@ class LocalLockFreeMetric {
     } else if (last_start > next->start) {
       next->EraseFirstN(last_start - next->start);
     }
-    CHECK_EQ(next->start + next->seq.size(), update_index_)
+    ABSL_CHECK_EQ(next->start + next->seq.size(), update_index_)
         << "next.start = " << next->start;
     update_index_++;
     next->seq.push_back(std::move(value));
@@ -94,11 +99,12 @@ class LocalLockFreeMetric {
     Slice* const next = exchange_.PassRight().first;
     const int_fast32_t seen = collect_index_ - next->start;
     if (seen < 0) {
-      LOG(FATAL) << "Missing range " << collect_index_ << ".." << next->start;
+      ABSL_LOG(FATAL) << "Missing range " << collect_index_ << ".."
+                      << next->start;
     } else if (seen < next->seq.size()) {
-      CHECK_GE(seen, 0) << "next.start = " << next->start
-                        << ", next.seq.size() = " << next->seq.size()
-                        << ", collect_index_ = " << collect_index_;
+      ABSL_CHECK_GE(seen, 0) << "next.start = " << next->start
+                             << ", next.seq.size() = " << next->seq.size()
+                             << ", collect_index_ = " << collect_index_;
       next->EraseFirstN(seen);
       collect_index_ += next->seq.size();
       return std::exchange(next->seq, {});

@@ -82,6 +82,7 @@ class Local3StateRcu {
 
   // Reference to the value that can be manipulated by the reading thread.
   T& Read() noexcept { return values_[read_.index]; }
+  const T& Read() const noexcept { return values_[read_.index]; }
 
   // Advance the Reader to a new value, if possible.
   //
@@ -108,6 +109,7 @@ class Local3StateRcu {
 
   // Reference to the value that can be manipulated by the updating thread.
   T& Update() noexcept { return values_[update_.index]; }
+  const T& Update() const noexcept { return values_[update_.index]; }
 
   // Advance the Updater to a new value, if possible.
   //
