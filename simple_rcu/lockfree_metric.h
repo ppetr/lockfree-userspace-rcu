@@ -77,9 +77,12 @@ class LocalLockFreeMetric {
  public:
   void Update(T value) {
     exchange_.Left().seq.emplace_back(value);
-    auto [next, exchanged] = exchange_.PassLeft();
-    if (next->seq.empty()) {
-      next->start = update_index_;
+    const int_fast32_t last_start = exchange_.Left().start;
+    const auto [next, exchanged] = exchange_.PassLeft();
+    if (exchanged) {
+      next->Reset(update_index_);
+    } else if (last_start > next->start) {
+      next->EraseFirstN(last_start - next->start);
     }
     CHECK_EQ(next->start + next->seq.size(), update_index_)
         << "next.start = " << next->start;
@@ -88,27 +91,35 @@ class LocalLockFreeMetric {
   }
 
   std::deque<T> Collect() {
-    auto [next, exchanged] = exchange_.PassRight();
+    Slice* const next = exchange_.PassRight().first;
     const int_fast32_t seen = collect_index_ - next->start;
-    next->start = collect_index_;
     if (seen < 0) {
-      collect_index_ += next->seq.size();
-      return std::exchange(next->seq, {});
+      LOG(FATAL) << "Missing range " << collect_index_ << ".." << next->start;
     } else if (seen < next->seq.size()) {
       CHECK_GE(seen, 0) << "next.start = " << next->start
                         << ", next.seq.size() = " << next->seq.size()
                         << ", collect_index_ = " << collect_index_;
-      next->seq.erase(next->seq.begin(), next->seq.begin() + seen);
+      next->EraseFirstN(seen);
       collect_index_ += next->seq.size();
       return std::exchange(next->seq, {});
     } else {
-      next->seq.clear();
+      next->Reset(collect_index_);
       return {};
     }
   }
 
  private:
   struct Slice {
+    void EraseFirstN(int_fast32_t n) {
+      seq.erase(seq.begin(), seq.begin() + n);
+      start += n;
+    }
+
+    void Reset(int_fast32_t new_start) {
+      seq.clear();
+      start = new_start;
+    }
+
     int_fast32_t start = 0;
     std::deque<T> seq;
   };
