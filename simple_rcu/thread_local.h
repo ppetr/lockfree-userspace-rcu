@@ -74,20 +74,18 @@ class ThreadLocal {
       return {ThreadLocal(nullptr, nullptr), false};
     }
     auto &local_map = Map();
-    auto pair = local_map.try_emplace(shared.get(), shared,
-                                      std::forward<Args>(args)...);
-    if (pair.second) {  // Insertion took place.
-      return {ThreadLocal(&pair.first->second.local, std::move(shared)), true};
-    }
-    if (ABSL_PREDICT_FALSE(pair.first->second.shared.expired())) {
+    const auto [it, inserted] = local_map.try_emplace(
+        shared.get(), shared, std::forward<Args>(args)...);
+    if (inserted) {
+      return {ThreadLocal(&it->second.local, std::move(shared)), true};
+    } else if (ABSL_PREDICT_FALSE(it->second.shared.expired())) {
       // Corner-case: An expired pointer that happens to have the same `S*`
       // key (re-using the same memory location).
-      pair = local_map.insert_or_assign(
-          shared.get(), Stored(shared, std::forward<Args>(args)...));
-      return {ThreadLocal(&pair.first->second.local, std::move(shared)), true};
+      it->second = Stored(shared, std::forward<Args>(args)...);
+      return {ThreadLocal(&it->second.local, std::move(shared)), true};
     } else {
-      ABSL_DCHECK_EQ(pair.first->second.shared.lock().get(), shared.get());
-      return {ThreadLocal(&pair.first->second.local, std::move(shared)), false};
+      ABSL_DCHECK_EQ(it->second.shared.lock().get(), shared.get());
+      return {ThreadLocal(&it->second.local, std::move(shared)), false};
     };
   }
 
