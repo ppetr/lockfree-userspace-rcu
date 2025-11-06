@@ -213,8 +213,8 @@ class CopyRcu {
   // The returned reference is valid until a next call to `GetThreadLocal` or
   // `CleanUpThreadLocal` by the same thread.
   static View &GetThreadLocal(std::shared_ptr<CopyRcu> rcu) noexcept {
-    auto pair =
-        ThreadLocal<std::unique_ptr<View>, CopyRcu>::Get(std::move(rcu));
+    auto pair = ThreadLocal<std::unique_ptr<View>, CopyRcu>::try_emplace(
+        std::move(rcu));
     if (pair.second) {  // Inserted.
       pair.first.local() = absl::make_unique<View>(pair.first.shared());
       int deleted_count = CleanUpThreadLocal();

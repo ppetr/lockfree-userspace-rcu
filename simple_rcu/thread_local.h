@@ -25,7 +25,7 @@
 namespace simple_rcu {
 
 // Lock-free thread-local variables of type `L` that are identified by a shared
-// state of `shared_ptr<S>`.
+// state of `shared_ptr<S>::get()`.
 template <typename L, typename S>
 class ThreadLocal {
  public:
@@ -68,29 +68,30 @@ class ThreadLocal {
   //
   // The returned `ThreadLocal::shared()` is set to the `shared` argument.
   template <typename... Args>
-  static std::pair<ThreadLocal, bool> Get(std::shared_ptr<S> shared,
-                                          Args... args) noexcept {
+  static std::pair<ThreadLocal, bool> try_emplace(std::shared_ptr<S> shared,
+                                                  Args... args) noexcept {
     if (shared == nullptr) {
       return {ThreadLocal(nullptr, nullptr), false};
     }
     auto &local_map = Map();
-    const auto [it, inserted] = local_map.try_emplace(
-        shared.get(), shared, std::forward<Args>(args)...);
-    if (inserted) {
-      return {ThreadLocal(&it->second.local, std::move(shared)), true};
-    } else if (ABSL_PREDICT_FALSE(it->second.shared.expired())) {
-      // Corner-case: An expired pointer that happens to have the same `S*`
-      // key (re-using the same memory location).
-      it->second = Stored(shared, std::forward<Args>(args)...);
-      return {ThreadLocal(&it->second.local, std::move(shared)), true};
-    } else {
-      ABSL_DCHECK_EQ(it->second.shared.lock().get(), shared.get());
-      return {ThreadLocal(&it->second.local, std::move(shared)), false};
-    };
+    auto [it, inserted] = local_map.try_emplace(shared.get(), shared,
+                                                std::forward<Args>(args)...);
+    if (!inserted) {
+      if (ABSL_PREDICT_FALSE(it->second.shared.expired())) {
+        // Corner-case: An expired pointer that happens to have the same `S*`
+        // key (re-using the same memory location).
+        it->second = Stored(shared, std::forward<Args>(args)...);
+        inserted = true;
+      } else {
+        ABSL_DCHECK_EQ(it->second.shared.lock().get(), shared.get());
+      }
+    }
+    return {ThreadLocal(&it->second.local, std::move(shared)), inserted};
   }
 
-  // Cleans up `L` instances created by `Get`, whose shared state objects have
-  // been deleted (as determined by their internal `std::weak_ptr<S>`).
+  // Cleans up `L` instances created by `try_emplace`, whose shared state
+  // objects have been deleted (as determined by their internal
+  // `std::weak_ptr<S>`).
   // Returns the number of deleted objects.
   static int CleanUp() noexcept {
     int deleted_count = 0;

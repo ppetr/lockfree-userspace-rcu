@@ -22,7 +22,7 @@ add_test(NAME local_3state_rcu_test COMMAND local_3state_rcu_test)
 
 add_library(thread_local INTERFACE)
 target_include_directories(thread_local INTERFACE .)
-target_link_libraries(thread_local INTERFACE absl::absl_check absl::core_headers)
+target_link_libraries(thread_local INTERFACE absl::absl_check absl::flat_hash_map absl::core_headers)
 
 add_library(copy_rcu INTERFACE)
 target_include_directories(copy_rcu INTERFACE .)
