@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#ifndef _SIMPLE_RCU_LOCKFREE_METRIC_H
+#define _SIMPLE_RCU_LOCKFREE_METRIC_H
+
 #include <atomic>
 #include <cstdint>
 #include <deque>
@@ -24,6 +27,7 @@
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "simple_rcu/local_3state_rcu.h"
+#include "simple_rcu/lock_free_int.h"
 
 // TODO
 #ifndef absl_nonnull
@@ -57,16 +61,11 @@ class Local3StateExchange {
   };
 
  private:
-#ifdef __cpp_lib_atomic_lock_free_type_aliases
-  using Index = typename std::atomic_signed_lock_free::value_type;
-#else
-  using Index = int_fast8_t;
-#endif
-#ifdef __cpp_lib_atomic_is_always_lock_free
-  static_assert(std::atomic<Index>::is_always_lock_free,
+  using Index = AtomicSignedLockFree;
+  static_assert(!std::is_void_v<Index> &&
+                    std::atomic<Index>::is_always_lock_free,
                 "Not lock-free on this architecture, please report this as a "
                 "bug on the project's GitHub page");
-#endif
 
   constexpr static Index kIndexMask = 3;
   constexpr static Index kByRightMask = 4;
@@ -85,9 +84,11 @@ class LocalLockFreeMetric {
     const int_fast32_t last_start = exchange_.Left().start;
     const auto [next, exchanged] = exchange_.PassLeft();
     if (exchanged) {
+      // The previous value was at `update_index_ - 1`, which has now been seen
+      // by the collecting side.
       next->Reset(update_index_);
-    } else if (last_start > next->start) {
-      next->EraseFirstN(last_start - next->start);
+    } else if (auto advance = last_start - next->start; advance > 0) {
+      next->EraseFirstN(advance);
     }
     ABSL_CHECK_EQ(next->start + next->seq.size(), update_index_)
         << "next.start = " << next->start;
@@ -107,6 +108,7 @@ class LocalLockFreeMetric {
                              << ", collect_index_ = " << collect_index_;
       next->EraseFirstN(seen);
       collect_index_ += next->seq.size();
+      ABSL_LOG(INFO) << "seen = " << seen << ", remaining " << next->seq.size();
       return std::exchange(next->seq, {});
     } else {
       next->Reset(collect_index_);
@@ -136,3 +138,5 @@ class LocalLockFreeMetric {
 };
 
 }  // namespace simple_rcu
+
+#endif  // _SIMPLE_RCU_LOCKFREE_METRIC_H

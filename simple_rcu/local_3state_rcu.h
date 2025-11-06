@@ -20,6 +20,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "simple_rcu/lock_free_int.h"
+
 namespace simple_rcu {
 
 // Provides a RCU-like framework to exchange values between just two threads
@@ -181,16 +183,11 @@ class Local3StateRcu {
   }
 
  private:
-#ifdef __cpp_lib_atomic_lock_free_type_aliases
-  using Index = typename std::atomic_signed_lock_free::value_type;
-#else
-  using Index = int_fast8_t;
-#endif
-#ifdef __cpp_lib_atomic_is_always_lock_free
-  static_assert(std::atomic<Index>::is_always_lock_free,
+  using Index = AtomicSignedLockFree;
+  static_assert(!std::is_void_v<Index> &&
+                    std::atomic<Index>::is_always_lock_free,
                 "Not lock-free on this architecture, please report this as a "
                 "bug on the project's GitHub page");
-#endif
 
   static constexpr Index kNullIndex = -1;
 

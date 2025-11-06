@@ -24,9 +24,13 @@ add_library(thread_local INTERFACE)
 target_include_directories(thread_local INTERFACE .)
 target_link_libraries(thread_local INTERFACE absl::absl_check absl::flat_hash_map absl::core_headers)
 
+add_library(lock_free_int INTERFACE)
+target_include_directories(lock_free_int INTERFACE .)
+target_link_libraries(lock_free_int INTERFACE atomic)
+
 add_library(copy_rcu INTERFACE)
 target_include_directories(copy_rcu INTERFACE .)
-target_link_libraries(copy_rcu INTERFACE local_3state_rcu absl::absl_log absl::absl_check absl::base absl::flat_hash_set absl::function_ref absl::optional absl::synchronization atomic)
+target_link_libraries(copy_rcu INTERFACE local_3state_rcu lock_free_int thread_local absl::absl_log absl::base absl::flat_hash_set absl::function_ref absl::optional absl::synchronization atomic)
 
 add_executable(copy_rcu_test copy_rcu_test.cc)
 target_link_libraries(copy_rcu_test copy_rcu gmock gtest_main)
@@ -38,7 +42,7 @@ add_test(NAME copy_rcu_benchmark COMMAND copy_rcu_benchmark)
 
 add_library(lockfree_metric INTERFACE)
 target_include_directories(lockfree_metric INTERFACE .)
-target_link_libraries(lockfree_metric INTERFACE local_3state_rcu absl::absl_check absl::absl_log absl::base absl::check absl::function_ref atomic)
+target_link_libraries(lockfree_metric INTERFACE local_3state_rcu lock_free_int absl::absl_check absl::absl_log absl::base absl::check absl::function_ref atomic)
 
 add_executable(lockfree_metric_test lockfree_metric_test.cc)
 target_link_libraries(lockfree_metric_test lockfree_metric absl::random_random absl::synchronization absl::time gmock gtest_main)
