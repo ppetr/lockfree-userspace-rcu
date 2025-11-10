@@ -88,6 +88,7 @@ class LocalLockFreeMetric {
       // by the collecting side.
       next->Reset(update_index_);
     } else if (auto advance = last_start - next->start; advance > 0) {
+      ABSL_CHECK((advance <= 1) || (advance >= next->seq.size() - 1));
       next->EraseFirstN(advance);
     }
     ABSL_CHECK_EQ(next->start + next->seq.size(), update_index_)
@@ -106,6 +107,10 @@ class LocalLockFreeMetric {
       ABSL_CHECK_GE(seen, 0) << "next.start = " << next->start
                              << ", next.seq.size() = " << next->seq.size()
                              << ", collect_index_ = " << collect_index_;
+      ABSL_CHECK((seen <= 1) || (seen >= next->seq.size() - 1))
+          << "next.start = " << next->start
+          << ", next.seq.size() = " << next->seq.size()
+          << ", collect_index_ = " << collect_index_;
       next->EraseFirstN(seen);
       collect_index_ += next->seq.size();
       ABSL_LOG(INFO) << "seen = " << seen << ", remaining " << next->seq.size();
