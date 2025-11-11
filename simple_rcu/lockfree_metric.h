@@ -81,12 +81,18 @@ class Local3StateExchange {
 // in another thread using just lock-free operations. Each call to `Update` or
 // `Collect` uses just a single atomic, lock-free operation.
 //
-// `C` must implement `operator+=(D)` (or a compatible one) that will be called
-// to collect values from `Update(D)` until `Collect()` is called.
-// See the `static_assert`s below for further requirements on these types.
+// `C` must implement a thread-compatible `operator+=(D)` (or a compatible one)
+// that will be called to collect values from `Update(D)` until `Collect()` is
+// called.  See the `static_assert`s below for further requirements on these
+// types.
 //
-// Notably these requirements are satisfied by all numerical types. Which
-// allows them to be accumulated lock-free regardless of
+// The trade-off to allow this lock-free implementation is that for each
+// `Update(d)` parameter `d`, the `operator+=(d)` is called twice on two
+// separate copies of `C`. And some of these calls can occur only during the
+// next `Collect()` call.
+//
+// Notably the above requirements are satisfied by all numerical types. Which
+// allows them to be accumulated lock-free regardless of their
 // `std::atomic<C>::is_always_lock_free`.
 //
 // It's also easy to create wrappers around standard collections and implement
