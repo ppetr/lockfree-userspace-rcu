@@ -89,7 +89,7 @@ class LocalLockFreeMetric {
       next->Reset(update_index_);
     } else if (auto advance = last_start - next->start; advance > 0) {
       ABSL_CHECK_EQ(advance, next->seq.size() - 1);
-      next->EraseFirstN(advance);
+      next->KeepJustLast();
     }
     ABSL_CHECK_EQ(next->start + next->seq.size(), update_index_)
         << "next.start = " << next->start;
@@ -104,16 +104,15 @@ class LocalLockFreeMetric {
       ABSL_LOG(FATAL) << "Missing range " << collect_index_ << ".."
                       << next->start;
     } else if (seen < next->seq.size()) {
-      ABSL_CHECK_GE(seen, 0) << "next.start = " << next->start
-                             << ", next.seq.size() = " << next->seq.size()
-                             << ", collect_index_ = " << collect_index_;
-      ABSL_CHECK((seen <= 1) || (seen >= next->seq.size() - 1))
-          << "next.start = " << next->start
-          << ", next.seq.size() = " << next->seq.size()
-          << ", collect_index_ = " << collect_index_;
-      next->EraseFirstN(seen);
-      collect_index_ += next->seq.size();
+      if (seen > 0) {
+        ABSL_CHECK_EQ(seen, next->seq.size() - 1)
+            << "next.start = " << next->start
+            << ", next.seq.size() = " << next->seq.size()
+            << ", collect_index_ = " << collect_index_;
+        next->KeepJustLast();
+      }
       ABSL_LOG(INFO) << "seen = " << seen << ", remaining " << next->seq.size();
+      collect_index_ += next->seq.size();
       return std::exchange(next->seq, {});
     } else {
       next->Reset(collect_index_);
@@ -123,9 +122,9 @@ class LocalLockFreeMetric {
 
  private:
   struct Slice {
-    void EraseFirstN(int_fast32_t n) {
-      seq.erase(seq.begin(), seq.begin() + n);
-      start += n;
+    void KeepJustLast() {
+      start += seq.size() - 1;
+      seq.erase(seq.begin(), seq.end() - 1);
     }
 
     void Reset(int_fast32_t new_start) {
