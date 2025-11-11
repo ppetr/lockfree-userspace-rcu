@@ -73,7 +73,7 @@ class Local3StateExchange {
   Index left_;
   std::atomic<Index> passing_;
   Index right_;
-  std::array<T, 3> values_;
+  std::array<T, 3> values_{T{}, T{}, T{}};
 };
 
 template <typename T>

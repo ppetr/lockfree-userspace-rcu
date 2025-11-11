@@ -76,7 +76,7 @@ class Local3StateRcu {
   // Builds an instance by initializing the internal three `T` variables to
   // `T()`. `T` must be default-constructible.
   Local3StateRcu()
-      : values_(),
+      : values_{T{}, T{}, T{}},
         next_read_index_(kNullIndex),
         read_{.index = 0},
         update_{.index = 1, .next_index = 0} {}
