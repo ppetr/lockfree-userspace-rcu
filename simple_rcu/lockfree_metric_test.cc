@@ -33,20 +33,19 @@ using ::testing::Eq;
 using ::testing::IsEmpty;
 using ::testing::Optional;
 
-TEST(LocalLockFreeMetricTest, ChangeSeenImmediately) {
-  LocalLockFreeMetric<int_least32_t> metric;
-  EXPECT_THAT(metric.Collect(), IsEmpty());
-  metric.Update(1);
-  EXPECT_THAT(metric.Collect(), ElementsAre(1));
-  EXPECT_THAT(metric.Collect(), IsEmpty());
-  // Another round.
-  metric.Update(2);
-  metric.Update(3);
-  EXPECT_THAT(metric.Collect(), ElementsAre(2, 3));
-  EXPECT_THAT(metric.Collect(), IsEmpty());
-}
-
 namespace {
+
+template <typename C>
+struct BackCollection {
+  using value_type = typename C::value_type;
+
+  BackCollection& operator+=(value_type value) {
+    collection.push_back(std::move(value));
+    return *this;
+  }
+
+  C collection;
+};
 
 template <typename T>
 void AppendTo(std::deque<T>&& input, std::deque<T>& target) {
@@ -56,10 +55,38 @@ void AppendTo(std::deque<T>&& input, std::deque<T>& target) {
 
 }  // namespace
 
+TEST(LocalLockFreeMetricTest, ChangeSeenImmediatelyInt) {
+  LocalLockFreeMetric<int> metric;
+  EXPECT_EQ(metric.Collect(), 0);
+  metric.Update(1);
+  EXPECT_EQ(metric.Collect(), 1);
+  EXPECT_EQ(metric.Collect(), 0);
+  // Another round.
+  metric.Update(2);
+  metric.Update(3);
+  EXPECT_EQ(metric.Collect(), 5);
+  EXPECT_EQ(metric.Collect(), 0);
+}
+
+TEST(LocalLockFreeMetricTest, ChangeSeenImmediately) {
+  LocalLockFreeMetric<BackCollection<std::deque<int_least32_t>>, int_least32_t>
+      metric;
+  EXPECT_THAT(metric.Collect().collection, IsEmpty());
+  metric.Update(1);
+  EXPECT_THAT(metric.Collect().collection, ElementsAre(1));
+  EXPECT_THAT(metric.Collect().collection, IsEmpty());
+  // Another round.
+  metric.Update(2);
+  metric.Update(3);
+  EXPECT_THAT(metric.Collect().collection, ElementsAre(2, 3));
+  EXPECT_THAT(metric.Collect().collection, IsEmpty());
+}
+
 TEST(LocalLockFreeMetricTest, TwoThreads) {
   static constexpr int_least32_t kCount = 0x10000;
   absl::BitGen bitgen;
-  LocalLockFreeMetric<int_least32_t> metric;
+  LocalLockFreeMetric<BackCollection<std::deque<int_least32_t>>, int_least32_t>
+      metric;
   absl::Notification updater_done;
   std::thread updater([&]() {
     for (int_least32_t i = 0; i < kCount; i++) {
@@ -70,11 +97,11 @@ TEST(LocalLockFreeMetricTest, TwoThreads) {
   });
   std::deque<int_least32_t> result;
   while (!updater_done.HasBeenNotified()) {
-    AppendTo(metric.Collect(), result);
+    AppendTo(metric.Collect().collection, result);
     absl::SleepFor(absl::Nanoseconds(absl::Uniform(bitgen, 0, 1000)));
   }
   updater.join();
-  AppendTo(metric.Collect(), result);
+  AppendTo(metric.Collect().collection, result);
   ASSERT_EQ(result.size(), kCount);
   for (int_least32_t i = 0; i < kCount; i++) {
     ASSERT_EQ(i, result[i]);

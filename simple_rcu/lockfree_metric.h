@@ -76,11 +76,11 @@ class Local3StateExchange {
   std::array<T, 3> values_{T{}, T{}, T{}};
 };
 
-template <typename T>
+template <typename C, typename D = C>
 class LocalLockFreeMetric {
  public:
-  void Update(T value) {
-    exchange_.Left().seq.emplace_back(value);
+  void Update(D value) {
+    exchange_.Left().Append(value);
     const int_fast32_t last_start = exchange_.Left().start;
     const auto [next, exchanged] = exchange_.PassLeft();
     if (exchanged) {
@@ -88,52 +88,76 @@ class LocalLockFreeMetric {
       // by the collecting side.
       next->Reset(update_index_);
     } else if (auto advance = last_start - next->start; advance > 0) {
-      ABSL_CHECK_EQ(advance, next->seq.size() - 1);
+      ABSL_CHECK_EQ(advance, next->size() - 1);
       next->KeepJustLast();
     }
-    ABSL_CHECK_EQ(next->start + next->seq.size(), update_index_)
+    ABSL_CHECK_EQ(next->start + next->size(), update_index_)
         << "next.start = " << next->start;
     update_index_++;
-    next->seq.push_back(std::move(value));
+    next->Append(std::move(value));
   }
 
-  std::deque<T> Collect() {
+  C Collect() {
     Slice* const next = exchange_.PassRight().first;
     const int_fast32_t seen = collect_index_ - next->start;
     if (seen < 0) {
       ABSL_LOG(FATAL) << "Missing range " << collect_index_ << ".."
                       << next->start;
-    } else if (seen < next->seq.size()) {
+      return C{};  // Unreachable.
+    } else if (seen < next->size()) {
       if (seen > 0) {
-        ABSL_CHECK_EQ(seen, next->seq.size() - 1)
+        ABSL_CHECK_EQ(seen, next->size() - 1)
             << "next.start = " << next->start
-            << ", next.seq.size() = " << next->seq.size()
+            << ", next.size() = " << next->size()
             << ", collect_index_ = " << collect_index_;
         next->KeepJustLast();
       }
-      ABSL_LOG(INFO) << "seen = " << seen << ", remaining " << next->seq.size();
-      collect_index_ += next->seq.size();
-      return std::exchange(next->seq, {});
+      // ABSL_VLOG(4) << "seen = " << seen << ", remaining " << next->size();
+      collect_index_ += next->size();
+      return next->CollectAndReset();
     } else {
       next->Reset(collect_index_);
-      return {};
+      return C{};
     }
   }
 
  private:
   struct Slice {
+    int_fast32_t size() const { return end - start; }
+
+    void Append(D value) {
+      if (last.has_value()) {
+        collected += *std::move(last);
+      }
+      last = std::move(value);
+      end++;
+    }
+
     void KeepJustLast() {
-      start += seq.size() - 1;
-      seq.erase(seq.begin(), seq.end() - 1);
+      start = end - 1;
+      collected = C{};
     }
 
     void Reset(int_fast32_t new_start) {
-      seq.clear();
-      start = new_start;
+      collected = C{};
+      last.reset();
+      end = (start = new_start);
+    }
+
+    C CollectAndReset() {
+      start = end;
+      if (last.has_value()) {
+        collected += *std::move(last);
+        last.reset();
+      }
+      return std::exchange(collected, C{});
     }
 
     int_fast32_t start = 0;
-    std::deque<T> seq;
+    int_fast32_t end = 0;
+    C collected;
+    // Holds a value iff `end > start`.
+    std::optional<D> last;
   };
 
   int_fast32_t update_index_ = 0;
