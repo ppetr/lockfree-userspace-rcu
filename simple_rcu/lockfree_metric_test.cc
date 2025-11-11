@@ -39,7 +39,17 @@ template <typename C>
 struct BackCollection {
   using value_type = typename C::value_type;
 
-  BackCollection& operator+=(value_type value) {
+  BackCollection() = default;
+  BackCollection(BackCollection const&) = delete;
+  BackCollection(BackCollection&&) = default;
+  BackCollection& operator=(BackCollection const&) = delete;
+  BackCollection& operator=(BackCollection&&) = default;
+
+  BackCollection& operator+=(const value_type& value) {
+    collection.emplace_back(value);
+    return *this;
+  }
+  BackCollection& operator+=(value_type&& value) {
     collection.push_back(std::move(value));
     return *this;
   }

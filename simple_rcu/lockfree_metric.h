@@ -23,6 +23,7 @@
 #include <utility>
 
 // TODO #include "absl/base/nullability.h"
+#include "absl/base/attributes.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
@@ -76,9 +77,35 @@ class Local3StateExchange {
   std::array<T, 3> values_{T{}, T{}, T{}};
 };
 
+// Collects values of type `D` from one thread into values of type `C` available
+// in another thread using just lock-free operations. Each call to `Update` or
+// `Collect` uses just a single atomic, lock-free operation.
+//
+// `C` must implement `operator+=(D)` (or a compatible one) that will be called
+// to collect values from `Update(D)` until `Collect()` is called.
+// See the `static_assert`s below for further requirements on these types.
+//
+// Notably these requirements are satisfied by all numerical types. Which
+// allows them to be accumulated lock-free regardless of
+// `std::atomic<C>::is_always_lock_free`.
+//
+// It's also easy to create wrappers around standard collections and implement
+// `+=` to add values into them (see the for example `BackCollection` in the
+// ..._test.cc file). This effectively implements a lock-free channel.
+//
+// A plain gauge that tracks just the lastest value can be implemented by
+//
+//     C& operator+=(D value) { *this = std::move(value); }
 template <typename C, typename D = C>
 class LocalLockFreeMetric {
  public:
+  static_assert(std::is_default_constructible_v<C>,
+                "`C` must be a default-constructible type");
+  static_assert(std::is_move_constructible_v<C> && std::is_move_assignable_v<C>,
+                "`C` must be a movable type");
+  static_assert(std::is_copy_constructible_v<D> && std::is_copy_assignable_v<D>,
+                "`D` must be a copyable type");
+
   void Update(D value) {
     exchange_.Left().Append(value);
     const int_fast32_t last_start = exchange_.Left().start;
@@ -97,7 +124,10 @@ class LocalLockFreeMetric {
     next->Append(std::move(value));
   }
 
-  C Collect() {
+  // Returns a collection of all `D` values passed to `Update` (by the other
+  // thread) accumulated into `C{}` using `operator+=(C&, D)` since the last
+  // call to `Collect`.
+  ABSL_MUST_USE_RESULT C Collect() {
     Slice* const next = exchange_.PassRight().first;
     const int_fast32_t seen = collect_index_ - next->start;
     if (seen < 0) {
