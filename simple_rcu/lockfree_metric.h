@@ -59,7 +59,7 @@ class Local3StateExchange {
         passing_.exchange(right_ | kByRightMask, std::memory_order_acq_rel);
     right_ = received & kIndexMask;
     return {&Right(), !(received & kByRightMask)};
-  };
+  }
 
  private:
   using Index = AtomicSignedLockFree;
@@ -108,18 +108,17 @@ class LocalLockFreeMetric {
 
   void Update(D value) {
     exchange_.Left().Append(value);
-    const int_fast32_t last_start = exchange_.Left().start;
+    const int_fast32_t last_start = exchange_.Left().start();
     const auto [next, exchanged] = exchange_.PassLeft();
     if (exchanged) {
       // The previous value was at `update_index_ - 1`, which has now been seen
       // by the collecting side.
       next->Reset(update_index_);
-    } else if (auto advance = last_start - next->start; advance > 0) {
+    } else if (auto advance = last_start - next->start(); advance > 0) {
       ABSL_CHECK_EQ(advance, next->size() - 1);
       next->KeepJustLast();
     }
-    ABSL_CHECK_EQ(next->start + next->size(), update_index_)
-        << "next.start = " << next->start;
+    ABSL_CHECK_EQ(next->end(), update_index_) << "next.end = " << next->end();
     update_index_++;
     next->Append(std::move(value));
   }
@@ -129,15 +128,15 @@ class LocalLockFreeMetric {
   // call to `Collect`.
   ABSL_MUST_USE_RESULT C Collect() {
     Slice* const next = exchange_.PassRight().first;
-    const int_fast32_t seen = collect_index_ - next->start;
+    const int_fast32_t seen = collect_index_ - next->start();
     if (seen < 0) {
       ABSL_LOG(FATAL) << "Missing range " << collect_index_ << ".."
-                      << next->start;
+                      << next->start();
       return C{};  // Unreachable.
     } else if (seen < next->size()) {
       if (seen > 0) {
         ABSL_CHECK_EQ(seen, next->size() - 1)
-            << "next.start = " << next->start
+            << "next.start = " << next->start()
             << ", next.size() = " << next->size()
             << ", collect_index_ = " << collect_index_;
         next->KeepJustLast();
@@ -152,42 +151,46 @@ class LocalLockFreeMetric {
   }
 
  private:
-  struct Slice {
-    int_fast32_t size() const { return end - start; }
+  class Slice {
+   public:
+    int_fast32_t start() const { return start_; }
+    int_fast32_t end() const { return end_; }
+    int_fast32_t size() const { return end_ - start_; }
 
     void Append(D value) {
-      if (last.has_value()) {
-        collected += *std::move(last);
+      if (last_.has_value()) {
+        collected_ += *std::move(last_);
       }
-      last = std::move(value);
-      end++;
+      last_ = std::move(value);
+      end_++;
     }
 
     void KeepJustLast() {
-      start = end - 1;
-      collected = C{};
+      start_ = end_ - 1;
+      collected_ = C{};
     }
 
     void Reset(int_fast32_t new_start) {
-      collected = C{};
-      last.reset();
-      end = (start = new_start);
+      collected_ = C{};
+      last_.reset();
+      end_ = (start_ = new_start);
     }
 
     C CollectAndReset() {
-      start = end;
-      if (last.has_value()) {
-        collected += *std::move(last);
-        last.reset();
+      start_ = end_;
+      if (last_.has_value()) {
+        collected_ += *std::move(last_);
+        last_.reset();
       }
-      return std::exchange(collected, C{});
+      return std::exchange(collected_, C{});
     }
 
-    int_fast32_t start = 0;
-    int_fast32_t end = 0;
-    C collected;
-    // Holds a value iff `end > start`.
-    std::optional<D> last;
+   private:
+    int_fast32_t start_ = 0;
+    int_fast32_t end_ = 0;
+    C collected_;
+    // Holds a value iff `end_ > start_`.
+    std::optional<D> last_;
   };
 
   int_fast32_t update_index_ = 0;
