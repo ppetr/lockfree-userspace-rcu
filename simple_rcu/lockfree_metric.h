@@ -24,10 +24,8 @@
 
 // TODO #include "absl/base/nullability.h"
 #include "absl/base/attributes.h"
-#include "absl/functional/function_ref.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
-#include "simple_rcu/local_3state_rcu.h"
 #include "simple_rcu/lock_free_int.h"
 
 // TODO
