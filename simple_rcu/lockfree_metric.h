@@ -86,8 +86,8 @@ class Local3StateExchange {
 //
 // The trade-off to allow this lock-free implementation is that for each
 // `Update(d)` parameter `d`, the `operator+=(d)` is called twice on two
-// separate copies of `C`. And some of these calls can occur only during the
-// next `Collect()` call.
+// separate copies of `C`. And some of these calls can be delayed to the next
+// `Collect()` call (this is why it should be thread-compatible).
 //
 // Notably the above requirements are satisfied by all numerical types. Which
 // allows them to be accumulated lock-free regardless of their
@@ -111,8 +111,12 @@ class LocalLockFreeMetric {
                 "`D` must be a copyable type");
 
   void Update(D value) {
-    exchange_.Left().Append(value);
-    const int_fast32_t last_start = exchange_.Left().start();
+    int_fast32_t last_start;
+    {
+      Slice& prev = exchange_.Left();
+      prev.Append(value);
+      last_start = prev.start();
+    }
     const auto [next, exchanged] = exchange_.PassLeft();
     if (exchanged) {
       // The previous value was at `update_index_ - 1`, which has now been seen
@@ -131,25 +135,26 @@ class LocalLockFreeMetric {
   // thread) accumulated into `C{}` using `operator+=(C&, D)` since the last
   // call to `Collect`.
   ABSL_MUST_USE_RESULT C Collect() {
-    Slice* const next = exchange_.PassRight().first;
-    const int_fast32_t seen = collect_index_ - next->start();
+    Slice& next = *exchange_.PassRight().first;
+    // On return `next.empty()` holds.
+    const int_fast32_t seen = collect_index_ - next.start();
     if (seen < 0) {
       ABSL_LOG(FATAL) << "Missing range " << collect_index_ << ".."
-                      << next->start();
+                      << next.start();
       return C{};  // Unreachable.
-    } else if (seen < next->size()) {
+    } else if (seen < next.size()) {
       if (seen > 0) {
-        ABSL_CHECK_EQ(seen, next->size() - 1)
-            << "next.start = " << next->start()
-            << ", next.size() = " << next->size()
+        ABSL_CHECK_EQ(seen, next.size() - 1)
+            << "next.start = " << next.start()
+            << ", next.size() = " << next.size()
             << ", collect_index_ = " << collect_index_;
-        next->KeepJustLast();
+        next.KeepJustLast();
       }
-      // ABSL_VLOG(4) << "seen = " << seen << ", remaining " << next->size();
-      collect_index_ += next->size();
-      return next->CollectAndReset();
+      // ABSL_VLOG(4) << "seen = " << seen << ", remaining " << next.size();
+      collect_index_ += next.size();
+      return next.CollectAndReset();
     } else {
-      next->Reset(collect_index_);
+      next.Reset(collect_index_);
       return C{};
     }
   }
@@ -160,6 +165,7 @@ class LocalLockFreeMetric {
     int_fast32_t start() const { return start_; }
     int_fast32_t end() const { return end_; }
     int_fast32_t size() const { return end_ - start_; }
+    bool empty() const { return !last_.has_value(); }
 
     void Append(D value) {
       if (last_.has_value()) {
@@ -175,8 +181,10 @@ class LocalLockFreeMetric {
     }
 
     void Reset(int_fast32_t new_start) {
-      collected_ = C{};
-      last_.reset();
+      if (last_.has_value()) {
+        collected_ = C{};
+        last_.reset();
+      }
       end_ = (start_ = new_start);
     }
 
