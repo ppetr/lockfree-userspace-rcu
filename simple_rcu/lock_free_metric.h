@@ -76,22 +76,22 @@ class LocalLockFreeMetric {
     if (exchanged) {
       // The previous value was at `update_index_ - 1`, which has now been seen
       // by the collecting side.
-      ABSL_CHECK(next->empty());
-      next->Reset(update_index_);
-    } else if (auto advance = last_start - next->start(); advance > 0) {
-      ABSL_CHECK_EQ(advance, next->size() - 1);
-      next->KeepJustLast();
+      ABSL_CHECK(next.empty());
+      next.Reset(update_index_);
+    } else if (auto advance = last_start - next.start(); advance > 0) {
+      ABSL_CHECK_EQ(advance, next.size() - 1);
+      next.KeepJustLast();
     }
-    ABSL_CHECK_EQ(next->end(), update_index_) << "next.end = " << next->end();
+    ABSL_CHECK_EQ(next.end(), update_index_) << "next.end = " << next.end();
     update_index_++;
-    next->Append(std::move(value));
+    next.Append(std::move(value));
   }
 
   // Returns a collection of all `D` values passed to `Update` (by the other
   // thread) accumulated into `C{}` using `operator+=(C&, D)` since the last
   // call to `Collect`.
   ABSL_MUST_USE_RESULT C Collect() {
-    Slice& next = *exchange_.PassRight().first;
+    Slice& next = exchange_.PassRight().first;
     // On return `next.empty()` holds.
     const int_fast32_t seen = collect_index_ - next.start();
     if (seen < 0) {

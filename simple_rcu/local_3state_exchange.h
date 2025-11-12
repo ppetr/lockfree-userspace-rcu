@@ -30,22 +30,20 @@ class Local3StateExchange {
   const T& Left() const { return values_[left_]; }
   T& Left() { return values_[left_]; }
 
-  // TODO: When absl nullability.h will be available, add `absl_nonnull`
-  // annotation to these returned pointers.
-  std::pair<T*, bool> PassLeft() {
+  std::pair<T&, bool> PassLeft() {
     const Index received = passing_.exchange(left_, std::memory_order_acq_rel);
     left_ = received & kIndexMask;
-    return {&Left(), received & kByRightMask};
+    return {Left(), received & kByRightMask};
   }
 
   const T& Right() const { return values_[right_]; }
   T& Right() { return values_[right_]; }
 
-  std::pair<T*, bool> PassRight() {
+  std::pair<T&, bool> PassRight() {
     const Index received =
         passing_.exchange(right_ | kByRightMask, std::memory_order_acq_rel);
     right_ = received & kIndexMask;
-    return {&Right(), !(received & kByRightMask)};
+    return {Right(), !(received & kByRightMask)};
   }
 
  private:
