@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "simple_rcu/lockfree_metric.h"
+#include "simple_rcu/lock_free_metric.h"
 
 #include <cstdint>
 #include <iterator>

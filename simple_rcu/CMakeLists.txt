@@ -40,13 +40,13 @@ add_executable(copy_rcu_benchmark copy_rcu_benchmark.cc)
 target_link_libraries(copy_rcu_benchmark copy_rcu benchmark::benchmark_main)
 add_test(NAME copy_rcu_benchmark COMMAND copy_rcu_benchmark)
 
-add_library(lockfree_metric INTERFACE)
-target_include_directories(lockfree_metric INTERFACE .)
-target_link_libraries(lockfree_metric INTERFACE lock_free_int absl::absl_check absl::absl_log absl::base atomic)
+add_library(lock_free_metric INTERFACE)
+target_include_directories(lock_free_metric INTERFACE .)
+target_link_libraries(lock_free_metric INTERFACE lock_free_int absl::absl_check absl::absl_log absl::base atomic)
 
-add_executable(lockfree_metric_test lockfree_metric_test.cc)
-target_link_libraries(lockfree_metric_test lockfree_metric absl::random_random absl::synchronization absl::time gmock gtest_main)
-add_test(NAME lockfree_metric_test COMMAND lockfree_metric_test)
+add_executable(lock_free_metric_test lock_free_metric_test.cc)
+target_link_libraries(lock_free_metric_test lock_free_metric absl::random_random absl::synchronization absl::time gmock gtest_main)
+add_test(NAME lock_free_metric_test COMMAND lock_free_metric_test)
 
 
 

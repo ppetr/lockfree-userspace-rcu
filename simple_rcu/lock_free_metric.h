@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef _SIMPLE_RCU_LOCKFREE_METRIC_H
-#define _SIMPLE_RCU_LOCKFREE_METRIC_H
+#ifndef _SIMPLE_RCU_LOCK_FREE_METRIC_H
+#define _SIMPLE_RCU_LOCK_FREE_METRIC_H
 
 #include <atomic>
 #include <cstdint>
@@ -214,4 +214,4 @@ class LocalLockFreeMetric {
 
 }  // namespace simple_rcu
 
-#endif  // _SIMPLE_RCU_LOCKFREE_METRIC_H
+#endif  // _SIMPLE_RCU_LOCK_FREE_METRIC_H
