@@ -121,6 +121,7 @@ class LocalLockFreeMetric {
     if (exchanged) {
       // The previous value was at `update_index_ - 1`, which has now been seen
       // by the collecting side.
+      ABSL_CHECK(next->empty());
       next->Reset(update_index_);
     } else if (auto advance = last_start - next->start(); advance > 0) {
       ABSL_CHECK_EQ(advance, next->size() - 1);
@@ -154,6 +155,7 @@ class LocalLockFreeMetric {
       collect_index_ += next.size();
       return next.CollectAndReset();
     } else {
+      ABSL_CHECK(next.empty());
       next.Reset(collect_index_);
       return C{};
     }
@@ -181,7 +183,7 @@ class LocalLockFreeMetric {
     }
 
     void Reset(int_fast32_t new_start) {
-      if (last_.has_value()) {
+      if (!empty()) {
         collected_ = C{};
         last_.reset();
       }
