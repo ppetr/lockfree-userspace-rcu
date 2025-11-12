@@ -42,11 +42,11 @@ struct FindAlwaysLockFree<> {
 using IntLockFree64 =
     FindAlwaysLockFree<int_fast64_t, int64_t, long long int>::type;
 using IntLockFree32 =
-    FindAlwaysLockFree<IntLockFree64, int_fast32_t, int32_t, long int>::type;
-using IntLockFree16 = FindAlwaysLockFree<IntLockFree32, int_fast16_t, int16_t,
+    FindAlwaysLockFree<int_fast32_t, IntLockFree64, int32_t, long int>::type;
+using IntLockFree16 = FindAlwaysLockFree<int_fast16_t, IntLockFree32, int16_t,
                                          short int, int>::type;
 using IntLockFree8 =
-    FindAlwaysLockFree<IntLockFree16, int_fast8_t, int8_t>::type;
+    FindAlwaysLockFree<int_fast8_t, IntLockFree16, int8_t>::type;
 
 #ifdef __cpp_lib_atomic_lock_free_type_aliases
 using AtomicSignedLockFree = typename std::atomic_signed_lock_free::value_type;
