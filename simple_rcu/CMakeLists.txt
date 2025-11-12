@@ -12,21 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+add_library(lock_free_int INTERFACE)
+target_include_directories(lock_free_int INTERFACE .)
+target_link_libraries(lock_free_int INTERFACE atomic)
+
 add_library(local_3state_rcu INTERFACE)
 target_include_directories(local_3state_rcu INTERFACE .)
-#target_link_libraries(local_3state_rcu INTERFACE absl::...)
+target_link_libraries(local_3state_rcu INTERFACE lock_free_int atomic)
 
 add_executable(local_3state_rcu_test local_3state_rcu_test.cc)
 target_link_libraries(local_3state_rcu_test gtest_main)
 add_test(NAME local_3state_rcu_test COMMAND local_3state_rcu_test)
 
+add_library(local_3state_exchange INTERFACE)
+target_include_directories(local_3state_exchange INTERFACE .)
+target_link_libraries(local_3state_exchange INTERFACE lock_free_int atomic)
+
 add_library(thread_local INTERFACE)
 target_include_directories(thread_local INTERFACE .)
 target_link_libraries(thread_local INTERFACE absl::absl_check absl::flat_hash_map absl::core_headers)
-
-add_library(lock_free_int INTERFACE)
-target_include_directories(lock_free_int INTERFACE .)
-target_link_libraries(lock_free_int INTERFACE atomic)
 
 add_library(copy_rcu INTERFACE)
 target_include_directories(copy_rcu INTERFACE .)
@@ -42,7 +46,7 @@ add_test(NAME copy_rcu_benchmark COMMAND copy_rcu_benchmark)
 
 add_library(lock_free_metric INTERFACE)
 target_include_directories(lock_free_metric INTERFACE .)
-target_link_libraries(lock_free_metric INTERFACE lock_free_int absl::absl_check absl::absl_log absl::base atomic)
+target_link_libraries(lock_free_metric INTERFACE local_3state_exchange absl::absl_check absl::absl_log)
 
 add_executable(lock_free_metric_test lock_free_metric_test.cc)
 target_link_libraries(lock_free_metric_test lock_free_metric absl::random_random absl::synchronization absl::time gmock gtest_main)

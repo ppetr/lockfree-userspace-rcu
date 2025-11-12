@@ -22,58 +22,13 @@
 #include <type_traits>
 #include <utility>
 
-// TODO #include "absl/base/nullability.h"
 #include "absl/base/attributes.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "simple_rcu/local_3state_exchange.h"
 #include "simple_rcu/lock_free_int.h"
 
-// TODO
-#ifndef absl_nonnull
-#define absl_nonnull
-#endif
-
 namespace simple_rcu {
-
-template <typename T>
-class Local3StateExchange {
- public:
-  Local3StateExchange() : left_(0), passing_(1), right_(2) {}
-
-  const T& Left() const { return values_[left_]; }
-  T& Left() { return values_[left_]; }
-
-  std::pair<T * absl_nonnull, bool> PassLeft() {
-    const Index received = passing_.exchange(left_, std::memory_order_acq_rel);
-    left_ = received & kIndexMask;
-    return {&Left(), received & kByRightMask};
-  }
-
-  const T& Right() const { return values_[right_]; }
-  T& Right() { return values_[right_]; }
-
-  std::pair<T * absl_nonnull, bool> PassRight() {
-    const Index received =
-        passing_.exchange(right_ | kByRightMask, std::memory_order_acq_rel);
-    right_ = received & kIndexMask;
-    return {&Right(), !(received & kByRightMask)};
-  }
-
- private:
-  using Index = AtomicSignedLockFree;
-  static_assert(!std::is_void_v<Index> &&
-                    std::atomic<Index>::is_always_lock_free,
-                "Not lock-free on this architecture, please report this as a "
-                "bug on the project's GitHub page");
-
-  constexpr static Index kIndexMask = 3;
-  constexpr static Index kByRightMask = 4;
-
-  Index left_;
-  std::atomic<Index> passing_;
-  Index right_;
-  std::array<T, 3> values_{T{}, T{}, T{}};
-};
 
 // Collects values of type `D` from one thread into values of type `C` available
 // in another thread using just lock-free operations. Each call to `Update` or
