@@ -33,8 +33,6 @@ using ::testing::Eq;
 using ::testing::IsEmpty;
 using ::testing::Optional;
 
-namespace {
-
 template <typename C>
 struct BackCollection {
   using value_type = typename C::value_type;
@@ -62,8 +60,6 @@ void AppendTo(std::deque<T>&& input, std::deque<T>& target) {
   target.insert(target.end(), std::make_move_iterator(input.begin()),
                 std::make_move_iterator(input.end()));
 }
-
-}  // namespace
 
 TEST(LocalLockFreeMetricTest, ChangeSeenImmediatelyInt) {
   LocalLockFreeMetric<int> metric;

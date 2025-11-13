@@ -48,6 +48,10 @@ add_library(lock_free_metric INTERFACE)
 target_include_directories(lock_free_metric INTERFACE .)
 target_link_libraries(lock_free_metric INTERFACE local_3state_exchange absl::absl_check absl::absl_log)
 
+add_executable(lock_free_metric_benchmark lock_free_metric_benchmark.cc)
+target_link_libraries(lock_free_metric_benchmark lock_free_metric absl::absl_check benchmark::benchmark_main)
+add_test(NAME lock_free_metric_benchmark COMMAND lock_free_metric_benchmark)
+
 add_executable(lock_free_metric_test lock_free_metric_test.cc)
 target_link_libraries(lock_free_metric_test lock_free_metric absl::random_random absl::synchronization absl::time gmock gtest_main)
 add_test(NAME lock_free_metric_test COMMAND lock_free_metric_test)
