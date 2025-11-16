@@ -15,7 +15,9 @@
 #include "simple_rcu/lock_free_metric.h"
 
 #include <cstdint>
+#include <deque>
 #include <iterator>
+#include <memory>
 #include <thread>
 
 #include "absl/random/random.h"
@@ -112,6 +114,24 @@ TEST(LocalLockFreeMetricTest, TwoThreads) {
   for (int_least32_t i = 0; i < kCount; i++) {
     ASSERT_EQ(i, result[i]);
   }
+}
+
+TEST(LockFreeMetricTest, ChangeSeenImmediately) {
+  auto metric = LockFreeMetric<int_least32_t>::New();
+  auto other = LockFreeMetric<int_least32_t>::New();
+  EXPECT_THAT(metric->Collect(), IsEmpty());
+  metric->Update(1);
+  EXPECT_THAT(metric->Collect(), ElementsAre(1));
+  EXPECT_THAT(metric->Collect(), ElementsAre(0));
+  EXPECT_THAT(other->Collect(), IsEmpty())
+      << "This thread hasn't created any thread-local local metrics for "
+         "`other`";
+  // Another round.
+  metric->Update(2);
+  metric->Update(3);
+  EXPECT_THAT(metric->Collect(), ElementsAre(5));
+  EXPECT_THAT(metric->Collect(), ElementsAre(0));
+  EXPECT_THAT(other->Collect(), IsEmpty());
 }
 
 }  // namespace

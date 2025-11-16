@@ -15,18 +15,21 @@
 #ifndef _SIMPLE_RCU_LOCK_FREE_METRIC_H
 #define _SIMPLE_RCU_LOCK_FREE_METRIC_H
 
-#include <atomic>
 #include <cstdint>
-#include <deque>
+#include <memory>
 #include <optional>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/base/attributes.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "absl/synchronization/mutex.h"
 #include "simple_rcu/local_3state_exchange.h"
-#include "simple_rcu/lock_free_int.h"
+#include "simple_rcu/thread_local.h"
 
 namespace simple_rcu {
 
@@ -165,6 +168,80 @@ class LocalLockFreeMetric {
   int_fast32_t update_index_ = 0;
   int_fast32_t collect_index_ = 0;
   Local3StateExchange<Slice> exchange_;
+};
+
+template <typename C, typename D = C>
+class LockFreeMetric
+    : public std::enable_shared_from_this<LockFreeMetric<C, D>> {
+ protected:
+  struct ConstructOnlyWithMakeShared {};
+
+ public:
+  LockFreeMetric(ConstructOnlyWithMakeShared) {}
+
+  static std::shared_ptr<LockFreeMetric> New() {
+    return std::make_shared<LockFreeMetric>(ConstructOnlyWithMakeShared{});
+  }
+
+  static void Update(D value, std::shared_ptr<LockFreeMetric> ptr) {
+    ThreadLocal<LocalMetric, LockFreeMetric>::try_emplace(ptr, ptr)
+        .first.local()
+        .local()
+        .Update(std::move(value));
+  }
+
+  // Calls `Update` using `shared_from_this()`.
+  void Update(D value) { Update(std::move(value), this->shared_from_this()); }
+
+  static std::vector<C> Collect(std::shared_ptr<LockFreeMetric> ptr) {
+    std::vector<C> result;
+    if (ptr == nullptr) {
+      return result;
+    }
+    absl::MutexLock mutex(&ptr->lock_);
+    result.reserve(ptr->locals_.size());
+    for (Local* l : ptr->locals_) {
+      result.push_back(l->Collect());
+    }
+    return result;
+  }
+
+  // Calls `Collect` using `shared_from_this()`.
+  std::vector<C> Collect() { return Collect(this->shared_from_this()); }
+
+ private:
+  using Local = LocalLockFreeMetric<C, D>;
+
+  class LocalMetric {
+   public:
+    LocalMetric(std::shared_ptr<LockFreeMetric> metric)
+        : metric_(metric), local_(std::make_unique<Local>()) {
+      absl::MutexLock mutex(&metric->lock_);
+      metric->locals_.insert(local_.get());
+    }
+    LocalMetric(LocalMetric&&) = default;
+    LocalMetric& operator=(LocalMetric&&) = default;
+
+    ~LocalMetric() {
+      std::shared_ptr<LockFreeMetric> metric = metric_.lock();
+      if (metric != nullptr) {
+        absl::MutexLock mutex(&metric->lock_);
+        metric->locals_.erase(local_.get());
+      }
+    }
+
+    Local& local() { return *local_; }
+
+   private:
+    // This weak_ptr duplicates the one in `ThreadLocal`. Figure out if they
+    // can be shared somehow.
+    std::weak_ptr<LockFreeMetric> metric_;
+    std::unique_ptr<Local> local_;
+  };
+
+  absl::Mutex lock_;
+  absl::flat_hash_set<Local*> locals_ ABSL_GUARDED_BY(lock_);
+  friend struct LocalMetric;
 };
 
 }  // namespace simple_rcu
