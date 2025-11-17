@@ -30,7 +30,7 @@ target_link_libraries(local_3state_exchange INTERFACE lock_free_int atomic)
 
 add_library(thread_local INTERFACE)
 target_include_directories(thread_local INTERFACE .)
-target_link_libraries(thread_local INTERFACE absl::absl_check absl::flat_hash_map absl::core_headers)
+target_link_libraries(thread_local INTERFACE absl::absl_check absl::absl_log absl::flat_hash_map absl::core_headers)
 
 add_library(copy_rcu INTERFACE)
 target_include_directories(copy_rcu INTERFACE .)

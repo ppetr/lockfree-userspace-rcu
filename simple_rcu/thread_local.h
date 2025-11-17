@@ -21,6 +21,7 @@
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/absl_check.h"
+#include "absl/log/absl_log.h"
 
 namespace simple_rcu {
 
@@ -78,8 +79,10 @@ class ThreadLocal {
                                                 std::forward<Args>(args)...);
     if (!inserted) {
       if (ABSL_PREDICT_FALSE(it->second.shared.expired())) {
-        // Corner-case: An expired pointer that happens to have the same `S*`
-        // key (re-using the same memory location).
+        ABSL_DLOG(INFO) << "Corner-case: An expired pointer that happens to "
+                           "have the same S* = "
+                        << shared.get()
+                        << " key (re-using the same memory location)";
         it->second = Stored(shared, std::forward<Args>(args)...);
         inserted = true;
       } else {
