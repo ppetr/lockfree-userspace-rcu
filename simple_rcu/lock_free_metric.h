@@ -205,12 +205,12 @@ class LockFreeMetric
   void Update(D value) { Update(std::move(value), this->shared_from_this()); }
 
   static std::vector<C> Collect(std::shared_ptr<LockFreeMetric> ptr) {
-    std::vector<C> result;
     if (ptr == nullptr) {
-      return result;
+      return {};
     }
     absl::MutexLock mutex(&ptr->lock_);
-    result.reserve(ptr->locals_.size());
+    std::vector<C> result = std::exchange(ptr->unregistered_, {});
+    result.reserve(result.size() + ptr->locals_.size());
     for (Local* l : ptr->locals_) {
       result.push_back(l->Collect());
     }
@@ -238,6 +238,7 @@ class LockFreeMetric
       if (metric != nullptr) {
         absl::MutexLock mutex(&metric->lock_);
         metric->locals_.erase(local_.get());
+        metric->unregistered_.push_back(local_->Collect());
       }
     }
 
@@ -252,6 +253,7 @@ class LockFreeMetric
 
   absl::Mutex lock_;
   absl::flat_hash_set<Local*> locals_ ABSL_GUARDED_BY(lock_);
+  std::vector<C> unregistered_ ABSL_GUARDED_BY(lock_);
   friend class LocalMetric;
 };
 
