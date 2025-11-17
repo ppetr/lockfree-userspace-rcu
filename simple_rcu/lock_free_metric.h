@@ -183,9 +183,22 @@ class LockFreeMetric
     return std::make_shared<LockFreeMetric>(ConstructOnlyWithMakeShared{});
   }
 
+  static LocalLockFreeMetric<C, D>& ThreadLocalView(
+      std::shared_ptr<LockFreeMetric> ptr) {
+    // While `ThreadLocal` is valid only until another `try_emplace`, our
+    // `local()` points to a stable `unique_ptr` that doesn't change.
+    return ThreadLocal<LocalMetric, LockFreeMetric>::try_emplace(ptr, ptr)
+        .first.local()
+        .local();
+  }
+
+  // Calls `Update` using `shared_from_this()`.
+  LocalLockFreeMetric<C, D>& ThreadLocalView() {
+    return ThreadLocalView(this->shared_from_this());
+  }
+
   static void Update(D value, std::shared_ptr<LockFreeMetric> ptr) {
-    auto pair = ThreadLocal<LocalMetric, LockFreeMetric>::try_emplace(ptr, ptr);
-    pair.first.local().local().Update(std::move(value));
+    ThreadLocalView(ptr).Update(std::move(value));
   }
 
   // Calls `Update` using `shared_from_this()`.
