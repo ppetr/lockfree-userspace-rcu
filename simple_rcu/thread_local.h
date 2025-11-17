@@ -1,4 +1,4 @@
-// Copyright 2022-2023 Google LLC
+// Copyright 2022-2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 #include <memory>
 #include <utility>
 
+#include "absl/base/attributes.h"
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/absl_check.h"
@@ -27,6 +28,9 @@ namespace simple_rcu {
 
 // Lock-free thread-local variables of type `L` that are identified by a shared
 // state of `shared_ptr<S>::get()`.
+//
+// Note that there is usually a considerable performance penalty involved with
+// `thread_local` variables, which is the bottle-neck of this class.
 template <typename L, typename S>
 class ThreadLocal {
  public:
@@ -52,6 +56,7 @@ class ThreadLocal {
   // longer).
   //
   // This reference is invalidated either by:
+  // - Calling `try_emplace` for any other `shared_ptr<S>`.
   // - Destroying this `ThreadLocal` object while it is the last owner of
   //   `shared()`. Or
   // - Calling `CleanUp` after the respective `shared_ptr` has been destroyed.
@@ -69,8 +74,8 @@ class ThreadLocal {
   //
   // The returned `ThreadLocal::shared()` is set to the `shared` argument.
   template <typename... Args>
-  static std::pair<ThreadLocal, bool> try_emplace(std::shared_ptr<S> shared,
-                                                  Args... args) noexcept {
+  inline static std::pair<ThreadLocal, bool> try_emplace(
+      std::shared_ptr<S> shared, Args... args) noexcept {
     if (shared == nullptr) {
       return {ThreadLocal(nullptr, nullptr), false};
     }
@@ -114,7 +119,7 @@ class ThreadLocal {
   struct Stored {
    public:
     std::weak_ptr<S> shared;
-    L local;
+    L local{};
 
     template <typename... Args>
     Stored(std::shared_ptr<S> shared_, Args... args_)
@@ -127,8 +132,11 @@ class ThreadLocal {
   ThreadLocal(L *local, std::shared_ptr<S> shared)
       : local_(local), shared_(std::move(shared)) {}
 
+  // TODO: Storing `Stored` in `flat_hash_map` means that any operation on it
+  // will invalidate existing `ThreadLocal` instances.
   static absl::flat_hash_map<S *, Stored> &Map() {
-    static thread_local absl::flat_hash_map<S *, Stored> local_map;
+    ABSL_CONST_INIT static thread_local absl::flat_hash_map<S *, Stored>
+        local_map{};
     return local_map;
   }
 
