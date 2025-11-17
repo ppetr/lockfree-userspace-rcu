@@ -24,7 +24,6 @@
 
 #include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/synchronization/mutex.h"
@@ -183,22 +182,22 @@ class LockFreeMetric
     return std::make_shared<LockFreeMetric>(ConstructOnlyWithMakeShared{});
   }
 
-  static LocalLockFreeMetric<C, D>& ThreadLocalView(
+  static std::shared_ptr<LocalLockFreeMetric<C, D>> ThreadLocalView(
       std::shared_ptr<LockFreeMetric> ptr) {
     // While `ThreadLocal` is valid only until another `try_emplace`, our
-    // `local()` points to a stable `unique_ptr` that doesn't change.
+    // `local()` points to a stable pointer that doesn't change.
     return ThreadLocal<LocalMetric, LockFreeMetric>::try_emplace(ptr, ptr)
         .first.local()
         .local();
   }
 
   // Calls `Update` using `shared_from_this()`.
-  LocalLockFreeMetric<C, D>& ThreadLocalView() {
+  std::shared_ptr<LocalLockFreeMetric<C, D>> ThreadLocalView() {
     return ThreadLocalView(this->shared_from_this());
   }
 
   static void Update(D value, std::shared_ptr<LockFreeMetric> ptr) {
-    ThreadLocalView(ptr).Update(std::move(value));
+    ThreadLocalView(std::move(ptr))->Update(std::move(value));
   }
 
   // Calls `Update` using `shared_from_this()`.
@@ -208,11 +207,25 @@ class LockFreeMetric
     if (ptr == nullptr) {
       return {};
     }
-    absl::MutexLock mutex(&ptr->lock_);
-    std::vector<C> result = std::exchange(ptr->unregistered_, {});
-    result.reserve(result.size() + ptr->locals_.size());
-    for (Local* l : ptr->locals_) {
-      result.push_back(l->Collect());
+    std::vector<std::shared_ptr<Local>> locals;
+    {
+      absl::MutexLock mutex(&ptr->lock_);
+      locals.reserve(ptr->locals_.size());
+      std::swap(locals, ptr->locals_);
+      for (auto& i : locals) {
+        // https://en.cppreference.com/w/cpp/memory/shared_ptr/use_count.html#Notes
+        // TODO: In certain cases, such as when a weak_ptr is `lock()`-ed, we
+        // might remove a pointer form `ptr->locals_` even though it'll
+        // continue to be referenced.
+        if (i.use_count() > 1) {
+          ptr->locals_.push_back(i);
+        }
+      }
+    }
+    std::vector<C> result;
+    result.reserve(locals.size());
+    for (auto& i : locals) {
+      result.push_back(i->Collect());
     }
     return result;
   }
@@ -226,34 +239,21 @@ class LockFreeMetric
   class LocalMetric {
    public:
     LocalMetric(std::shared_ptr<LockFreeMetric> metric)
-        : metric_(metric), local_(std::make_unique<Local>()) {
+        : local_(std::make_shared<Local>()) {
       absl::MutexLock mutex(&metric->lock_);
-      metric->locals_.insert(local_.get());
+      metric->locals_.push_back(local_);
     }
     LocalMetric(LocalMetric&&) = default;
     LocalMetric& operator=(LocalMetric&&) = default;
 
-    ~LocalMetric() {
-      std::shared_ptr<LockFreeMetric> metric = metric_.lock();
-      if (metric != nullptr) {
-        absl::MutexLock mutex(&metric->lock_);
-        metric->locals_.erase(local_.get());
-        metric->unregistered_.push_back(local_->Collect());
-      }
-    }
-
-    Local& local() { return *local_; }
+    std::shared_ptr<Local> local() { return local_; }
 
    private:
-    // This weak_ptr duplicates the one in `ThreadLocal`. Figure out if they
-    // can be shared somehow.
-    std::weak_ptr<LockFreeMetric> metric_;
-    std::unique_ptr<Local> local_;
+    std::shared_ptr<Local> local_;
   };
 
   absl::Mutex lock_;
-  absl::flat_hash_set<Local*> locals_ ABSL_GUARDED_BY(lock_);
-  std::vector<C> unregistered_ ABSL_GUARDED_BY(lock_);
+  std::vector<std::shared_ptr<Local>> locals_ ABSL_GUARDED_BY(lock_);
   friend class LocalMetric;
 };
 
