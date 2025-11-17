@@ -21,7 +21,7 @@ echo "Signature: 8a477f597d28d172789f06886806bc55" >"${BASE}/build/CACHEDIR.TAG"
 
 schedtool -B -n10 $$ || true
 
-for TOOLCHAIN in clang11 gcc ; do
+for TOOLCHAIN in clang14 gcc ; do
   DIR="${BASE}/build/rel-${TOOLCHAIN}"
   mkdir -p "$DIR"
   cd "$DIR"

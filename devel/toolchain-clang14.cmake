@@ -12,22 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Usage: -DCMAKE_TOOLCHAIN_FILE=toolchain-clang11.cmake
-set(CLANG_VERSION 11)
+# Usage: -DCMAKE_TOOLCHAIN_FILE=toolchain-clang14.cmake
+set(CLANG_VERSION 14)
 
 set(CMAKE_C_COMPILER             "/usr/bin/clang-${CLANG_VERSION}")
 set(CMAKE_C_FLAGS                "-Wall")
 set(CMAKE_C_FLAGS_DEBUG          "-g")
-set(CMAKE_C_FLAGS_MINSIZEREL     "-Os -DNDEBUG")
-set(CMAKE_C_FLAGS_RELEASE        "-O3 -DNDEBUG")
-set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -g")
+set(CMAKE_C_FLAGS_MINSIZEREL     "-Os -DNDEBUG -flto=auto")
+set(CMAKE_C_FLAGS_RELEASE        "-O3 -DNDEBUG -flto=auto")
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -g -flto=auto")
 
 set(CMAKE_CXX_COMPILER             "/usr/bin/clang++-${CLANG_VERSION}")
 set(CMAKE_CXX_FLAGS                "-Wall")
 set(CMAKE_CXX_FLAGS_DEBUG          "-g")
-set(CMAKE_CXX_FLAGS_MINSIZEREL     "-Os -DNDEBUG")
-set(CMAKE_CXX_FLAGS_RELEASE        "-O3 -DNDEBUG")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g")
+set(CMAKE_CXX_FLAGS_MINSIZEREL     "-Os -DNDEBUG -flto=auto")
+set(CMAKE_CXX_FLAGS_RELEASE        "-O3 -DNDEBUG -flto=auto")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g -flto=auto")
 
 set(LLVMAR_EXECUTABLE "/usr/bin/llvm-ar-${CLANG_VERSION}")
 set(LLVMNM_EXECUTABLE "/usr/bin/llvm-nm-${CLANG_VERSION}")
