@@ -184,10 +184,8 @@ class LockFreeMetric
   }
 
   static void Update(D value, std::shared_ptr<LockFreeMetric> ptr) {
-    ThreadLocal<LocalMetric, LockFreeMetric>::try_emplace(ptr, ptr)
-        .first.local()
-        .local()
-        .Update(std::move(value));
+    auto pair = ThreadLocal<LocalMetric, LockFreeMetric>::try_emplace(ptr, ptr);
+    pair.first.local().local().Update(std::move(value));
   }
 
   // Calls `Update` using `shared_from_this()`.
@@ -241,7 +239,7 @@ class LockFreeMetric
 
   absl::Mutex lock_;
   absl::flat_hash_set<Local*> locals_ ABSL_GUARDED_BY(lock_);
-  friend struct LocalMetric;
+  friend class LocalMetric;
 };
 
 }  // namespace simple_rcu

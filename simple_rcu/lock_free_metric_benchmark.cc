@@ -24,9 +24,9 @@ namespace simple_rcu {
 namespace {
 
 template <typename T>
-struct Context {
-  static std::optional<Context>& Static() {
-    static std::optional<Context> ctx;
+struct LocalContext {
+  static std::optional<LocalContext>& Static() {
+    static std::optional<LocalContext> ctx;
     return ctx;
   }
 
@@ -36,21 +36,20 @@ struct Context {
 
 template <typename T>
 static void Setup(const benchmark::State&) {
-  auto& context = Context<T>::Static();
-  ABSL_CHECK(!context.has_value()) << "Context not teared down";
+  auto& context = LocalContext<T>::Static();
+  ABSL_CHECK(!context.has_value()) << "LocalContext not teared down";
   context.emplace();
 }
 
 template <typename T>
 static void Teardown(const benchmark::State& state) {
-  auto& context = Context<T>::Static();
+  auto& context = LocalContext<T>::Static();
   ABSL_CHECK(context.has_value()) << "Mismatched Teardown";
   context.reset();
 }
 
-static void BM_TwoThreads(benchmark::State& state) {
-  // A type that's not lock-free on any current architecture.
-  auto& ctx = *Context<int_fast32_t>::Static();
+static void BM_LocalTwoThreads(benchmark::State& state) {
+  auto& ctx = *LocalContext<int_fast32_t>::Static();
   if (state.thread_index() == 0) {
     int64_t total = 0;
     for (auto _ : state) {
@@ -68,12 +67,43 @@ static void BM_TwoThreads(benchmark::State& state) {
     }
   }
 }
-BENCHMARK(BM_TwoThreads)
+BENCHMARK(BM_LocalTwoThreads)
     ->Threads(2)
     ->Range(1 << 10, 1 << 20)
     ->Setup(Setup<int_fast32_t>)
-    ->Teardown(Teardown<int_fast32_t>)
-    ->Complexity();
+    ->Teardown(Teardown<int_fast32_t>);
+// ->Complexity();
+
+static void BM_MultiThreaded(benchmark::State& state) {
+  static std::vector<int64_t> counts;
+  static std::shared_ptr<LockFreeMetric<int_fast32_t>> metric;
+  if (state.thread_index() == state.threads() - 1) {
+    counts = std::vector<int64_t>(state.threads() - 1, 0);
+    metric = LockFreeMetric<int_fast32_t>::New();
+    int64_t measured = 0;
+    for (auto _ : state) {
+      for (int_fast32_t c : metric->Collect()) {
+        measured += c;
+      }
+    }
+    for (int_fast32_t c : metric->Collect()) {
+      measured += c;
+    }
+    // Compare the results.
+    int64_t expected = 0;
+    for (int64_t i : counts) {
+      expected += (i * (i + 1)) / 2;
+    }
+    // ABSL_CHECK_EQ(expected, measured);
+  } else {
+    const int i = state.thread_index();
+    for (auto _ : state) {
+      metric->Update(++counts[i]);
+    }
+  }
+}
+BENCHMARK(BM_MultiThreaded)->ThreadRange(2, 4)->Range(1 << 10, 1 << 20);
+// ->Complexity();
 
 }  // namespace
 }  // namespace simple_rcu
