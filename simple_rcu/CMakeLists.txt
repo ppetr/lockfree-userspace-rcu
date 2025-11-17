@@ -32,6 +32,10 @@ add_library(thread_local INTERFACE)
 target_include_directories(thread_local INTERFACE .)
 target_link_libraries(thread_local INTERFACE absl::absl_check absl::absl_log absl::flat_hash_map absl::core_headers)
 
+add_executable(thread_local_benchmark thread_local_benchmark.cc)
+target_link_libraries(thread_local_benchmark thread_local absl::absl_check benchmark::benchmark_main)
+add_test(NAME thread_local_benchmark COMMAND thread_local_benchmark)
+
 add_library(copy_rcu INTERFACE)
 target_include_directories(copy_rcu INTERFACE .)
 target_link_libraries(copy_rcu INTERFACE local_3state_rcu lock_free_int thread_local absl::absl_log absl::base absl::flat_hash_set absl::function_ref absl::optional absl::synchronization atomic)
