@@ -83,8 +83,8 @@ class Local3StateRcu {
   ~Local3StateRcu() noexcept = default;
 
   // Reference to the value that can be manipulated by the reading thread.
-  T& Read() noexcept { return values_[read_.index]; }
-  const T& Read() const noexcept { return values_[read_.index]; }
+  inline T& Read() noexcept { return values_[read_.index]; }
+  inline const T& Read() const noexcept { return values_[read_.index]; }
 
   // Advance the Reader to a new value, if possible.
   //
@@ -98,7 +98,7 @@ class Local3StateRcu {
   //
   // See also `TryUpdate()` which has the same semantics for the updater
   // thread.
-  bool TryRead() noexcept {
+  inline bool TryRead() noexcept {
     Index next_read_index =
         next_read_index_.exchange(kNullIndex, std::memory_order_acq_rel);
     if (next_read_index != kNullIndex) {
@@ -110,8 +110,8 @@ class Local3StateRcu {
   }
 
   // Reference to the value that can be manipulated by the updating thread.
-  T& Update() noexcept { return values_[update_.index]; }
-  const T& Update() const noexcept { return values_[update_.index]; }
+  inline T& Update() noexcept { return values_[update_.index]; }
+  inline const T& Update() const noexcept { return values_[update_.index]; }
 
   // Advance the Updater to a new value, if possible.
   //
@@ -124,7 +124,7 @@ class Local3StateRcu {
   // `false`.
   //
   // See also `TryRead()` which has the same semantics for the updater thread.
-  bool TryUpdate() noexcept {
+  inline bool TryUpdate() noexcept {
     Index old_next_read_index = kNullIndex;
     // Use relaxed memory ordering on failure, since in this case there is no
     // related observable memory access.
@@ -153,7 +153,7 @@ class Local3StateRcu {
   //
   // Compared to `TryUpdate()` this method forces an update even if the
   // reader hasn't advanced yet.
-  bool ForceUpdate() noexcept {
+  inline bool ForceUpdate() noexcept {
     Index old_next_read_index =
         next_read_index_.exchange(update_.index, std::memory_order_acq_rel);
     if (old_next_read_index == kNullIndex) {
@@ -174,7 +174,7 @@ class Local3StateRcu {
   //
   // This allows to access the instance passed by the Reader to the Updater
   // without providing a new value by `ForceUpdate()` or `TryUpdate()`.
-  T* ReclaimByUpdate() noexcept {
+  inline T* ReclaimByUpdate() noexcept {
     if (next_read_index_.load(std::memory_order_acquire) == kNullIndex) {
       return &values_[update_.OldReadIndex()];
     } else {

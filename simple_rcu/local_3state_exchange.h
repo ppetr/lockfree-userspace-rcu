@@ -27,19 +27,19 @@ class Local3StateExchange {
  public:
   Local3StateExchange() : left_(0), passing_(1), right_(2) {}
 
-  const T& Left() const { return values_[left_]; }
-  T& Left() { return values_[left_]; }
+  inline const T& Left() const { return values_[left_]; }
+  inline T& Left() { return values_[left_]; }
 
-  std::pair<T&, bool> PassLeft() {
+  inline std::pair<T&, bool> PassLeft() {
     const Index received = passing_.exchange(left_, std::memory_order_acq_rel);
     left_ = received & kIndexMask;
     return {Left(), received & kByRightMask};
   }
 
-  const T& Right() const { return values_[right_]; }
-  T& Right() { return values_[right_]; }
+  inline const T& Right() const { return values_[right_]; }
+  inline T& Right() { return values_[right_]; }
 
-  std::pair<T&, bool> PassRight() {
+  inline std::pair<T&, bool> PassRight() {
     const Index received =
         passing_.exchange(right_ | kByRightMask, std::memory_order_acq_rel);
     right_ = received & kIndexMask;

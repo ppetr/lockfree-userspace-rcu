@@ -67,7 +67,7 @@ class LocalLockFreeMetric {
   static_assert(std::is_copy_constructible_v<D> && std::is_copy_assignable_v<D>,
                 "`D` must be a copyable type");
 
-  void Update(D value) {
+  inline void Update(D value) {
     int_fast32_t last_start;
     {
       Slice& prev = exchange_.Left();
@@ -121,12 +121,12 @@ class LocalLockFreeMetric {
  private:
   class Slice {
    public:
-    int_fast32_t start() const { return start_; }
-    int_fast32_t end() const { return end_; }
-    int_fast32_t size() const { return end_ - start_; }
-    bool empty() const { return !last_.has_value(); }
+    inline int_fast32_t start() const { return start_; }
+    inline int_fast32_t end() const { return end_; }
+    inline int_fast32_t size() const { return end_ - start_; }
+    inline bool empty() const { return !last_.has_value(); }
 
-    void Append(D value) {
+    inline void Append(D value) {
       if (last_.has_value()) {
         collected_ += *std::move(last_);
       }
@@ -134,12 +134,12 @@ class LocalLockFreeMetric {
       end_++;
     }
 
-    void KeepJustLast() {
+    inline void KeepJustLast() {
       start_ = end_ - 1;
       collected_ = C{};
     }
 
-    void Reset(int_fast32_t new_start) {
+    inline void Reset(int_fast32_t new_start) {
       if (!empty()) {
         collected_ = C{};
         last_.reset();
@@ -182,7 +182,14 @@ class LockFreeMetric
     return std::make_shared<LockFreeMetric>(ConstructOnlyWithMakeShared{});
   }
 
-  static std::shared_ptr<LocalLockFreeMetric<C, D>> ThreadLocalView(
+  // Returns the thread-local `LockFreeMetric` instance. This allows very fast
+  // execution of its `Update` method, for example in a tight loop, without the
+  // `thread_local` overhead of  this class' `Update` methods.
+  //
+  // Callers aren't expected to call `Collect` on the returned instance. Doing
+  // so, in particular while this class' `Collect` method is running, is
+  // undefined behavior.
+  static inline std::shared_ptr<LocalLockFreeMetric<C, D>> ThreadLocalView(
       std::shared_ptr<LockFreeMetric> ptr) {
     // While `ThreadLocal` is valid only until another `try_emplace`, our
     // `local()` points to a stable pointer that doesn't change.
@@ -238,7 +245,7 @@ class LockFreeMetric
 
   class LocalMetric {
    public:
-    LocalMetric(std::shared_ptr<LockFreeMetric> metric)
+    inline LocalMetric(std::shared_ptr<LockFreeMetric> metric)
         : local_(std::make_shared<Local>()) {
       absl::MutexLock mutex(&metric->lock_);
       metric->locals_.push_back(local_);
@@ -246,7 +253,7 @@ class LockFreeMetric
     LocalMetric(LocalMetric&&) = default;
     LocalMetric& operator=(LocalMetric&&) = default;
 
-    std::shared_ptr<Local> local() { return local_; }
+    inline std::shared_ptr<Local> local() { return local_; }
 
    private:
     std::shared_ptr<Local> local_;

@@ -1,4 +1,4 @@
-// Copyright 2022-2023 Google LLC
+// Copyright 2022-2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -27,6 +27,9 @@ namespace simple_rcu {
 
 // Lock-free thread-local variables of type `L` that are identified by a shared
 // state of `shared_ptr<S>::get()`.
+//
+// Note that there is usually a considerable performance penalty involved with
+// `thread_local` variables, which is the bottle-neck of this class.
 template <typename L, typename S>
 class ThreadLocal {
  public:
@@ -44,7 +47,7 @@ class ThreadLocal {
     }
   }
 
-  bool operator()() const noexcept { return local_ != nullptr; }
+  inline bool operator()() const noexcept { return local_ != nullptr; }
 
   // This reference is valid at least as long as the `shared_ptr` returned by
   // `shared()` is alive. Since this `ThreadLocal` keeps the pointer alive on
@@ -52,10 +55,11 @@ class ThreadLocal {
   // longer).
   //
   // This reference is invalidated either by:
+  // - Calling `try_emplace` for any other `shared_ptr<S>`.
   // - Destroying this `ThreadLocal` object while it is the last owner of
   //   `shared()`. Or
   // - Calling `CleanUp` after the respective `shared_ptr` has been destroyed.
-  L &local() const noexcept { return *local_; }
+  inline L &local() const noexcept { return *local_; }
 
   // The shared instance `local()` is bound to.
   std::shared_ptr<S> shared() const noexcept { return shared_; }
@@ -69,8 +73,8 @@ class ThreadLocal {
   //
   // The returned `ThreadLocal::shared()` is set to the `shared` argument.
   template <typename... Args>
-  static std::pair<ThreadLocal, bool> try_emplace(std::shared_ptr<S> shared,
-                                                  Args... args) noexcept {
+  static inline std::pair<ThreadLocal, bool> try_emplace(
+      std::shared_ptr<S> shared, Args... args) noexcept {
     if (shared == nullptr) {
       return {ThreadLocal(nullptr, nullptr), false};
     }
@@ -114,7 +118,7 @@ class ThreadLocal {
   struct Stored {
    public:
     std::weak_ptr<S> shared;
-    L local;
+    L local{};
 
     template <typename... Args>
     Stored(std::shared_ptr<S> shared_, Args... args_)
@@ -127,7 +131,7 @@ class ThreadLocal {
   ThreadLocal(L *local, std::shared_ptr<S> shared)
       : local_(local), shared_(std::move(shared)) {}
 
-  static absl::flat_hash_map<S *, Stored> &Map() {
+  static inline absl::flat_hash_map<S *, Stored> &Map() {
     static thread_local absl::flat_hash_map<S *, Stored> local_map;
     return local_map;
   }
