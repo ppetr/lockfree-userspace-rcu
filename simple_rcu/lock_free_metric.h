@@ -25,7 +25,6 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
-#include "absl/synchronization/mutex.h"
 #include "simple_rcu/local_3state_exchange.h"
 #include "simple_rcu/thread_local.h"
 
@@ -191,7 +190,7 @@ class LockFreeMetric {
  private:
   using Local = LocalLockFreeMetric<C, D>;
 
-  ThreadLocal<Local, std::monostate> locals_;
+  ThreadLocal<Local> locals_;
 };
 
 }  // namespace simple_rcu

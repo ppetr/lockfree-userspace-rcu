@@ -117,21 +117,21 @@ TEST(LocalLockFreeMetricTest, TwoThreads) {
 }
 
 TEST(LockFreeMetricTest, ChangeSeenImmediately) {
-  auto metric = LockFreeMetric<int_least32_t>::New();
-  auto other = LockFreeMetric<int_least32_t>::New();
-  EXPECT_THAT(metric->Collect(), IsEmpty());
-  metric->Update(1);
-  EXPECT_THAT(metric->Collect(), ElementsAre(1));
-  EXPECT_THAT(metric->Collect(), ElementsAre(0));
-  EXPECT_THAT(other->Collect(), IsEmpty())
+  LockFreeMetric<int_least32_t> metric;
+  LockFreeMetric<int_least32_t> other;
+  EXPECT_THAT(metric.Collect(), IsEmpty());
+  metric.Update(1);
+  EXPECT_THAT(metric.Collect(), ElementsAre(1));
+  EXPECT_THAT(metric.Collect(), ElementsAre(0));
+  EXPECT_THAT(other.Collect(), IsEmpty())
       << "This thread hasn't created any thread-local local metrics for "
          "`other`";
   // Another round.
-  metric->Update(2);
-  metric->Update(3);
-  EXPECT_THAT(metric->Collect(), ElementsAre(5));
-  EXPECT_THAT(metric->Collect(), ElementsAre(0));
-  EXPECT_THAT(other->Collect(), IsEmpty());
+  metric.Update(2);
+  metric.Update(3);
+  EXPECT_THAT(metric.Collect(), ElementsAre(5));
+  EXPECT_THAT(metric.Collect(), ElementsAre(0));
+  EXPECT_THAT(other.Collect(), IsEmpty());
 }
 
 }  // namespace

@@ -49,7 +49,7 @@ add_test(NAME copy_rcu_benchmark COMMAND copy_rcu_benchmark)
 
 add_library(lock_free_metric INTERFACE)
 target_include_directories(lock_free_metric INTERFACE .)
-target_link_libraries(lock_free_metric INTERFACE local_3state_exchange thread_local absl::base absl::absl_check absl::absl_log absl::synchronization)
+target_link_libraries(lock_free_metric INTERFACE local_3state_exchange thread_local absl::base absl::absl_check absl::absl_log)
 
 add_executable(lock_free_metric_benchmark lock_free_metric_benchmark.cc)
 target_link_libraries(lock_free_metric_benchmark lock_free_metric absl::absl_check absl::absl_log benchmark::benchmark_main)
