@@ -84,6 +84,30 @@ BENCHMARK(BM_Reads)
     ->Setup([](const benchmark::State&) { Setup<int_fast32_t>(0); })
     ->Teardown(Teardown<int_fast32_t>);
 
+static void BM_ReadsThreadLocal(benchmark::State& state) {
+  static auto& context = StaticContext<int_fast32_t>();
+  if (state.thread_index() == 0) {
+    for (int i = 0; i < state.range(0); i++) {
+      context->threads.emplace_back([&]() {
+        int_fast32_t updates = 0;
+        while (!context->finished.load()) {
+          benchmark::DoNotOptimize(context->rcu.Update(updates++));
+        }
+      });
+    }
+  }
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(context->rcu.Read());
+    benchmark::ClobberMemory();
+  }
+}
+BENCHMARK(BM_ReadsThreadLocal)
+    ->ThreadRange(1, 64)
+    ->Arg(1)
+    ->Arg(4)
+    ->Setup([](const benchmark::State&) { Setup<int_fast32_t>(0); })
+    ->Teardown(Teardown<int_fast32_t>);
+
 static void BM_ReadSharedPtrs(benchmark::State& state) {
   static auto& context = StaticContext<std::shared_ptr<const int_fast32_t>>();
   if (state.thread_index() == 0) {
