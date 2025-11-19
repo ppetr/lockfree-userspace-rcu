@@ -55,16 +55,17 @@ class InternalPerThreadBase {
   static absl::flat_hash_map<
       std::shared_ptr<void>,
       std::unique_ptr<InternalPerThreadBase, MarkAbandoned>> &
-  Map();
+  NonOwnedMap();
+
+  // Keeps shared global objects as keys and values map into per-thread objects
+  // owned by the global key.
+  static absl::flat_hash_map<void *, std::shared_ptr<void>> &OwnedMap();
 
   template <typename L, typename S>
-  friend class ThreadLocal;
+  friend class ThreadLocalLazy;
+  template <typename L, typename S>
+  friend class ThreadLocalStrict;
 };
-
-// Keeps shared global objects as keys and values map into per-thread objects
-// owned by the global key.
-absl::flat_hash_map<void *, std::shared_ptr<void>> &
-InternalThreadLocalOwnedMap();
 
 // Lock-free thread-local variables of type `L` that are identified by a shared
 // state of `shared_ptr<S>::get()`.
@@ -72,7 +73,7 @@ InternalThreadLocalOwnedMap();
 // Note that there is usually a considerable performance penalty involved with
 // `thread_local` variables, which is the bottle-neck of this class.
 template <typename L, typename S = std::monostate>
-class ThreadLocal {
+class ThreadLocalLazy {
  public:
   struct PerThread : public InternalPerThreadBase {
    public:
@@ -87,9 +88,9 @@ class ThreadLocal {
   };
 
   template <typename... Args>
-  explicit ThreadLocal(Args... args_)
+  explicit ThreadLocalLazy(Args... args_)
       : shared_(std::make_shared<Shared>(std::forward<Args>(args_)...)) {}
-  ~ThreadLocal() = default;
+  ~ThreadLocalLazy() = default;
 
   std::shared_ptr<S> shared() const noexcept {
     return std::shared_ptr<S>(shared_, &shared_->value);
@@ -102,10 +103,11 @@ class ThreadLocal {
   // constructed from `args` and `true` is returned in the 2nd part of the
   // result.
   //
-  // The returned `ThreadLocal::shared()` is set to the `shared` argument.
+  // The returned `ThreadLocalLazy::shared()` is set to the `shared` argument.
   template <typename... Args>
   inline std::pair<L &, bool> try_emplace(Args... args) {
-    auto &map_ptr = InternalPerThreadBase::Map()[ABSL_DIE_IF_NULL(shared_)];
+    auto &map_ptr =
+        InternalPerThreadBase::NonOwnedMap()[ABSL_DIE_IF_NULL(shared_)];
     if (map_ptr == nullptr || map_ptr->abandoned()) {
       auto owned = std::make_unique<PerThread>(std::forward<Args>(args)...);
       PerThread *const ptr = owned.get();
@@ -126,6 +128,8 @@ class ThreadLocal {
     PruneResult result;
     absl::MutexLock mutex(&shared_->per_thread_lock);
     std::vector<std::unique_ptr<PerThread>> &per_thread = shared_->per_thread;
+    // Shrink-to-fit before removals as a small optimization - possibly the
+    // roughly same number of new entries will be added until next call.
     per_thread.shrink_to_fit();
     auto it = std::partition(
         per_thread.begin(), per_thread.end(),
@@ -136,7 +140,7 @@ class ThreadLocal {
                             std::make_move_iterator(per_thread.end()));
     per_thread.erase(it, per_thread.end());
     // Copy pointers to the remaining ones.
-    result.current.reserve(shared_->per_thread.size());
+    result.current.reserve(per_thread.size());
     for (const auto &r : per_thread) {
       result.current.push_back(std::shared_ptr<L>(shared_, &r->value));
     }
@@ -153,6 +157,106 @@ class ThreadLocal {
     absl::Mutex per_thread_lock;
     std::vector<std::unique_ptr<PerThread>> per_thread
         ABSL_GUARDED_BY(per_thread_lock);
+  };
+
+  // Never nullptr (unless moved out).
+  std::shared_ptr<Shared> shared_;
+};
+
+// Lock-free thread-local variables of type `L` that are identified by a shared
+// state of `shared_ptr<S>::get()`.
+//
+// Note that there is usually a considerable performance penalty involved with
+// `thread_local` variables, which is the bottle-neck of this class.
+template <typename L, typename S = std::monostate>
+class ThreadLocalStrict {
+ public:
+  template <typename... Args>
+  explicit ThreadLocalStrict(Args... args_)
+      : shared_(std::make_shared<Shared>(std::forward<Args>(args_)...)) {}
+  ~ThreadLocalStrict() {
+    // Free memory held by the set in case the `shared_ptr` is held by some `L`
+    // (or other) objects.
+    shared_->Clear();
+  }
+
+  std::shared_ptr<S> shared() const noexcept {
+    return std::shared_ptr<S>(shared_, &shared_->value);
+  }
+
+  // Retrieves a thread-local instance bound to `shared`.
+  //
+  // The return value semantic is equivalent to the common `try_emplace`
+  // function: Iff there is no thread-local value available yet, it is
+  // constructed from `args` and `true` is returned in the 2nd part of the
+  // result.
+  //
+  // The returned `ThreadLocalStrict::shared()` is set to the `shared` argument.
+  template <typename... Args>
+  inline std::pair<L &, bool> try_emplace(Args... args) {
+    auto &map_ptr =
+        InternalPerThreadBase::OwnedMap()[ABSL_DIE_IF_NULL(shared_.get())];
+    if (map_ptr == nullptr) {
+      auto owned = std::make_shared<PerThread>(std::forward<Args>(args)...);
+      shared_->Add(owned);
+      map_ptr = owned;
+      return {*owned, true};
+    } else {
+      return {*reinterpret_cast<PerThread *>(map_ptr.get()), false};
+    }
+  }
+
+  std::vector<std::shared_ptr<L>> Prune() { return shared_->Prune(); }
+
+ private:
+  using PerThread = L;
+
+  class Shared {
+   public:
+    S value;
+
+    template <typename... Args>
+    explicit Shared(Args... args_) : value(std::forward<Args>(args_)...) {}
+
+    void Add(std::weak_ptr<PerThread> ptr)
+        ABSL_LOCKS_EXCLUDED(per_thread_lock_) {
+      absl::MutexLock mutex(&per_thread_lock_);
+      per_thread_.emplace_back(ptr);
+    }
+
+    void Clear() ABSL_LOCKS_EXCLUDED(per_thread_lock_) {
+      absl::MutexLock mutex(&per_thread_lock_);
+      per_thread_.clear();
+    }
+
+    std::vector<std::shared_ptr<L>> Prune()
+        ABSL_LOCKS_EXCLUDED(per_thread_lock_) {
+      std::vector<std::shared_ptr<L>> result;
+      absl::MutexLock mutex(&per_thread_lock_);
+      result.reserve(per_thread_.size());
+      for (std::weak_ptr<PerThread> &weak : per_thread_) {
+        if (std::shared_ptr<PerThread> shared = weak.lock();
+            shared != nullptr) {
+          result.push_back(std::move(shared));
+        }
+      }
+      PruneOnlyInternal();
+      return result;
+    }
+
+   private:
+    void PruneOnlyInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(per_thread_lock_) {
+      // Shrink-to-fit before removals as a small optimization - possibly the
+      // roughly same number of new entries will be added until next call.
+      per_thread_.shrink_to_fit();
+      per_thread_.erase(std::remove_if(per_thread_.begin(), per_thread_.end(),
+                                       [](auto &ptr) { return ptr.expired(); }),
+                        per_thread_.end());
+    }
+
+    absl::Mutex per_thread_lock_;
+    std::vector<std::weak_ptr<PerThread>> per_thread_
+        ABSL_GUARDED_BY(per_thread_lock_);
   };
 
   // Never nullptr (unless moved out).

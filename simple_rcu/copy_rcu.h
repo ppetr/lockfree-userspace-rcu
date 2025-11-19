@@ -202,7 +202,7 @@ class CopyRcu {
  private:
   T UpdateLocked(typename std::remove_const<T>::type value)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
-    for (std::shared_ptr<View> &view : views_.Prune().current) {
+    for (std::shared_ptr<View> &view : views_.Prune()) {
       Local3StateRcu<MutableT> &local_rcu = view->local_rcu_;
       local_rcu.Update() = value;
       local_rcu.ForceUpdate();
@@ -211,13 +211,13 @@ class CopyRcu {
     return value;
   }
 
-  T Current() ABSL_MUST_USE_RESULT ABSL_LOCKS_EXCLUDED(lock_) {
+  ABSL_MUST_USE_RESULT T Current() ABSL_LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
     return *views_.shared();
   }
 
   absl::Mutex lock_;
-  ThreadLocal<View, MutableT> views_;
+  ThreadLocalStrict<View, MutableT> views_;
 };
 
 // By using `CopyRcu<shared_ptr<const T>>` we accomplish a RCU implementation

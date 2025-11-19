@@ -21,7 +21,7 @@
 namespace simple_rcu {
 
 absl::flat_hash_map<void *, std::shared_ptr<void>> &
-InternalThreadLocalOwnedMap() {
+InternalPerThreadBase::OwnedMap() {
   static thread_local absl::flat_hash_map<void *, std::shared_ptr<void>> map;
   return map;
 }
@@ -29,7 +29,7 @@ InternalThreadLocalOwnedMap() {
 absl::flat_hash_map<std::shared_ptr<void>,
                     std::unique_ptr<InternalPerThreadBase,
                                     InternalPerThreadBase::MarkAbandoned>> &
-InternalPerThreadBase::Map() {
+InternalPerThreadBase::NonOwnedMap() {
   static thread_local absl::flat_hash_map<
       std::shared_ptr<void>,
       std::unique_ptr<InternalPerThreadBase,

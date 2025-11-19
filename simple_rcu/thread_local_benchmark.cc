@@ -23,22 +23,11 @@
 namespace simple_rcu {
 namespace {
 
-/* TODO
-static void BM_ThreadLocalForTrivialType(benchmark::State& state) {
-  int i = 0;
-  for (auto _ : state) {
-    benchmark::DoNotOptimize(i += ThreadLocal<int, char>::Map().size());
-  }
-  benchmark::DoNotOptimize(i);
-}
-BENCHMARK(BM_ThreadLocalForTrivialType)->ThreadRange(1, 64)->Complexity();
-*/
-
 static void BM_MultiThreaded(benchmark::State& state) {
-  static ThreadLocal<int, char> shared{-1};
+  static ThreadLocalLazy<int, char> shared{-1};
   const int i = state.thread_index();
   if (i == 0) {
-    shared = ThreadLocal<int, char>{0};
+    shared = ThreadLocalLazy<int, char>{0};
   }
   for (auto _ : state) {
     shared.try_emplace(0).first++;

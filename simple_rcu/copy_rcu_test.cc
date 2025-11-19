@@ -47,10 +47,10 @@ TEST(CopyRcuTest, UpdateAndReadConstRef) {
   CopyRcu<const std::reference_wrapper<const int>> rcu(old_value);
   CopyRcu<const std::reference_wrapper<const int>>::View& local =
       rcu.ThreadLocalView();
+  EXPECT_THAT(local.Read(), Pointee(0));
   const int value = 42;
   rcu.Update(value);
-  EXPECT_THAT(local.Read(), Pointee(42))
-      << "Reader thread must receive a correct value";
+  EXPECT_THAT(local.Read(), Pointee(42));
 }
 
 TEST(CopyRcuTest, UpdateIf) {
