@@ -16,7 +16,6 @@
 #define _SIMPLE_RCU_LOCK_FREE_METRIC_H
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <type_traits>
 #include <utility>
@@ -170,98 +169,29 @@ class LocalLockFreeMetric {
 };
 
 template <typename C, typename D = C>
-class LockFreeMetric
-    : public std::enable_shared_from_this<LockFreeMetric<C, D>> {
- protected:
-  struct ConstructOnlyWithMakeShared {};
-
+class LockFreeMetric {
  public:
-  LockFreeMetric(ConstructOnlyWithMakeShared) {}
+  LockFreeMetric() = default;
 
-  static std::shared_ptr<LockFreeMetric> New() {
-    return std::make_shared<LockFreeMetric>(ConstructOnlyWithMakeShared{});
-  }
+  void Update(D value) { locals_.try_emplace().first.Update(std::move(value)); }
 
-  // Returns the thread-local `LockFreeMetric` instance. This allows very fast
-  // execution of its `Update` method, for example in a tight loop, without the
-  // `thread_local` overhead of  this class' `Update` methods.
-  //
-  // Callers aren't expected to call `Collect` on the returned instance. Doing
-  // so, in particular while this class' `Collect` method is running, is
-  // undefined behavior.
-  static inline std::shared_ptr<LocalLockFreeMetric<C, D>> ThreadLocalView(
-      std::shared_ptr<LockFreeMetric> ptr) {
-    // While `ThreadLocal` is valid only until another `try_emplace`, our
-    // `local()` points to a stable pointer that doesn't change.
-    return ThreadLocal<LocalMetric, LockFreeMetric>::try_emplace(ptr, ptr)
-        .first.local()
-        .local();
-  }
-
-  // Calls `Update` using `shared_from_this()`.
-  std::shared_ptr<LocalLockFreeMetric<C, D>> ThreadLocalView() {
-    return ThreadLocalView(this->shared_from_this());
-  }
-
-  static void Update(D value, std::shared_ptr<LockFreeMetric> ptr) {
-    ThreadLocalView(std::move(ptr))->Update(std::move(value));
-  }
-
-  // Calls `Update` using `shared_from_this()`.
-  void Update(D value) { Update(std::move(value), this->shared_from_this()); }
-
-  static std::vector<C> Collect(std::shared_ptr<LockFreeMetric> ptr) {
-    if (ptr == nullptr) {
-      return {};
-    }
-    std::vector<std::shared_ptr<Local>> locals;
-    {
-      absl::MutexLock mutex(&ptr->lock_);
-      locals.reserve(ptr->locals_.size());
-      std::swap(locals, ptr->locals_);
-      for (auto& i : locals) {
-        // https://en.cppreference.com/w/cpp/memory/shared_ptr/use_count.html#Notes
-        // TODO: In certain cases, such as when a weak_ptr is `lock()`-ed, we
-        // might remove a pointer form `ptr->locals_` even though it'll
-        // continue to be referenced.
-        if (i.use_count() > 1) {
-          ptr->locals_.push_back(i);
-        }
-      }
-    }
+  std::vector<C> Collect() {
+    auto pruned = locals_.Prune();
     std::vector<C> result;
-    result.reserve(locals.size());
-    for (auto& i : locals) {
+    result.reserve(pruned.current.size() + pruned.abandoned.size());
+    for (auto& i : pruned.current) {
       result.push_back(i->Collect());
+    }
+    for (auto& i : pruned.abandoned) {
+      result.push_back(i->value.Collect());
     }
     return result;
   }
 
-  // Calls `Collect` using `shared_from_this()`.
-  std::vector<C> Collect() { return Collect(this->shared_from_this()); }
-
  private:
   using Local = LocalLockFreeMetric<C, D>;
 
-  class LocalMetric {
-   public:
-    inline LocalMetric(std::shared_ptr<LockFreeMetric> metric)
-        : local_(std::make_shared<Local>()) {
-      absl::MutexLock mutex(&metric->lock_);
-      metric->locals_.push_back(local_);
-    }
-    LocalMetric(LocalMetric&&) = default;
-    LocalMetric& operator=(LocalMetric&&) = default;
-
-    inline std::shared_ptr<Local> local() { return local_; }
-
-   private:
-    std::shared_ptr<Local> local_;
-  };
-
-  absl::Mutex lock_;
-  std::vector<std::shared_ptr<Local>> locals_ ABSL_GUARDED_BY(lock_);
-  friend class LocalMetric;
+  ThreadLocal<Local, std::monostate> locals_;
 };
 
 }  // namespace simple_rcu

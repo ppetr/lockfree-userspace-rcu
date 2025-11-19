@@ -15,15 +15,56 @@
 #ifndef _SIMPLE_RCU_THREAD_LOCAL_H
 #define _SIMPLE_RCU_THREAD_LOCAL_H
 
+#include <algorithm>
+#include <atomic>
 #include <memory>
 #include <utility>
+#include <vector>
 
 #include "absl/base/optimization.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "absl/log/die_if_null.h"
 
 namespace simple_rcu {
+
+class InternalPerThreadBase {
+ private:
+  ~InternalPerThreadBase() = default;
+
+  struct MarkAbandoned {
+    void operator()(InternalPerThreadBase *b) {
+      b->held_.clear(std::memory_order_release);
+    }
+  };
+
+  std::atomic_flag held_;
+  bool abandoned_ = false;
+
+  bool abandoned() {
+    return abandoned_ || (!held_.test_and_set(std::memory_order_acquire) &&
+                          (abandoned_ = true));
+  }
+
+  InternalPerThreadBase() { held_.test_and_set(); }
+
+  // Keeps shared global objects as keys and values map into per-thread objects
+  // owned by the global key.
+  static absl::flat_hash_map<
+      std::shared_ptr<void>,
+      std::unique_ptr<InternalPerThreadBase, MarkAbandoned>> &
+  Map();
+
+  template <typename L, typename S>
+  friend class ThreadLocal;
+};
+
+// Keeps shared global objects as keys and values map into per-thread objects
+// owned by the global key.
+absl::flat_hash_map<void *, std::shared_ptr<void>> &
+InternalThreadLocalOwnedMap();
 
 // Lock-free thread-local variables of type `L` that are identified by a shared
 // state of `shared_ptr<S>::get()`.
@@ -33,36 +74,26 @@ namespace simple_rcu {
 template <typename L, typename S>
 class ThreadLocal {
  public:
-  ~ThreadLocal() {
-    S *ptr = shared_.get();
-    if ((ptr != nullptr) &&
-        std::weak_ptr<S>(std::exchange(shared_, nullptr)).expired()) {
-      // This is the very last instance referencing the shared value.
-      // Therefore we can clean the local now.
-      auto &map = Map();
-      auto it = map.find(ptr);
-      ABSL_DCHECK(it != map.end());
-      ABSL_DCHECK_EQ(&it->second.local, local_);
-      map.erase(it);
-    }
+  struct PerThread : public InternalPerThreadBase {
+   public:
+    L value;
+
+    template <typename... Args>
+    explicit PerThread(Args... args_) : value(std::forward<Args>(args_)...) {}
+  };
+  struct PruneResult {
+    std::vector<std::shared_ptr<L>> current;
+    std::vector<std::unique_ptr<PerThread>> abandoned;
+  };
+
+  template <typename... Args>
+  explicit ThreadLocal(Args... args_)
+      : shared_(std::make_shared<Shared>(std::forward<Args>(args_)...)) {}
+  ~ThreadLocal() = default;
+
+  std::shared_ptr<S> shared() const noexcept {
+    return std::shared_ptr<S>(shared_, shared_->value);
   }
-
-  inline bool operator()() const noexcept { return local_ != nullptr; }
-
-  // This reference is valid at least as long as the `shared_ptr` returned by
-  // `shared()` is alive. Since this `ThreadLocal` keeps the pointer alive on
-  // its own, the reference is valid for the lifetime of `this` (and possibly
-  // longer).
-  //
-  // This reference is invalidated either by:
-  // - Calling `try_emplace` for any other `shared_ptr<S>`.
-  // - Destroying this `ThreadLocal` object while it is the last owner of
-  //   `shared()`. Or
-  // - Calling `CleanUp` after the respective `shared_ptr` has been destroyed.
-  inline L &local() const noexcept { return *local_; }
-
-  // The shared instance `local()` is bound to.
-  std::shared_ptr<S> shared() const noexcept { return shared_; }
 
   // Retrieves a thread-local instance bound to `shared`.
   //
@@ -73,71 +104,59 @@ class ThreadLocal {
   //
   // The returned `ThreadLocal::shared()` is set to the `shared` argument.
   template <typename... Args>
-  static inline std::pair<ThreadLocal, bool> try_emplace(
-      std::shared_ptr<S> shared, Args... args) noexcept {
-    if (shared == nullptr) {
-      return {ThreadLocal(nullptr, nullptr), false};
-    }
-    auto &local_map = Map();
-    auto [it, inserted] = local_map.try_emplace(shared.get(), shared,
-                                                std::forward<Args>(args)...);
-    if (!inserted) {
-      if (ABSL_PREDICT_FALSE(it->second.shared.expired())) {
-        ABSL_DLOG(INFO) << "Corner-case: An expired pointer that happens to "
-                           "have the same S* = "
-                        << shared.get()
-                        << " key (re-using the same memory location)";
-        it->second = Stored(shared, std::forward<Args>(args)...);
-        inserted = true;
-      } else {
-        ABSL_DCHECK_EQ(it->second.shared.lock().get(), shared.get());
+  inline std::pair<L &, bool> try_emplace(Args... args) {
+    auto &map_ptr = InternalPerThreadBase::Map()[ABSL_DIE_IF_NULL(shared_)];
+    if (map_ptr == nullptr || map_ptr->abandoned()) {
+      auto owned = std::make_unique<PerThread>(std::forward<Args>(args)...);
+      PerThread *const ptr = owned.get();
+      {
+        absl::MutexLock mutex(&shared_->per_thread_lock);
+        shared_->per_thread.push_back(std::move(owned));
       }
+      map_ptr =
+          std::unique_ptr<PerThread, InternalPerThreadBase::MarkAbandoned>(ptr);
+      return {ptr->value, true};
+    } else {
+      PerThread *ptr = reinterpret_cast<PerThread *>(map_ptr.get());
+      return {ptr->value, false};
     }
-    return {ThreadLocal(&it->second.local, std::move(shared)), inserted};
   }
 
-  // Cleans up `L` instances created by `try_emplace`, whose shared state
-  // objects have been deleted (as determined by their internal
-  // `std::weak_ptr<S>`).
-  // Returns the number of deleted objects.
-  static int CleanUp() noexcept {
-    int deleted_count = 0;
-    auto &map = Map();
-    for (auto it = map.begin(); it != map.end();) {
-      if (it->second.shared.expired()) {
-        map.erase(it++);
-        deleted_count++;
-      } else {
-        it++;
-      }
+  PruneResult Prune() {
+    PruneResult result;
+    absl::MutexLock mutex(&shared_->per_thread_lock);
+    std::vector<std::unique_ptr<PerThread>> &per_thread = shared_->per_thread;
+    per_thread.shrink_to_fit();
+    auto it = std::partition(
+        per_thread.begin(), per_thread.end(),
+        [](const std::unique_ptr<PerThread> &i) { return !i->abandoned(); });
+    // Move abandoned instances to the result.
+    result.abandoned.reserve(per_thread.end() - it);
+    result.abandoned.insert(result.abandoned.end(), std::make_move_iterator(it),
+                            std::make_move_iterator(per_thread.end()));
+    per_thread.erase(it, per_thread.end());
+    // Copy pointers to the remaining ones.
+    result.current.reserve(shared_->per_thread.size());
+    for (const auto &r : per_thread) {
+      result.current.push_back(std::shared_ptr<L>(shared_, &r->value));
     }
-    return deleted_count;
+    return result;
   }
 
  private:
-  struct Stored {
-   public:
-    std::weak_ptr<S> shared;
-    L local{};
+  struct Shared {
+    S value;
 
     template <typename... Args>
-    Stored(std::shared_ptr<S> shared_, Args... args_)
-        : shared(std::move(shared_)), local(std::forward<Args>(args_)...) {}
+    explicit Shared(Args... args_) : value(std::forward<Args>(args_)...) {}
 
-   private:
-    friend class ThreadLocal;
+    absl::Mutex per_thread_lock;
+    std::vector<std::unique_ptr<PerThread>> per_thread
+        ABSL_GUARDED_BY(per_thread_lock);
   };
 
-  ThreadLocal(L *local, std::shared_ptr<S> shared)
-      : local_(local), shared_(std::move(shared)) {}
-
-  static inline absl::flat_hash_map<S *, Stored> &Map() {
-    static thread_local absl::flat_hash_map<S *, Stored> local_map;
-    return local_map;
-  }
-
-  L *local_;
-  std::shared_ptr<S> shared_;
+  // Never nullptr (unless moved out).
+  std::shared_ptr<Shared> shared_;
 };
 
 }  // namespace simple_rcu

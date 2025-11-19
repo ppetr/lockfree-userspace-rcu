@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <memory>
 
+#include "absl/base/attributes.h"
 #include "absl/log/absl_check.h"
 #include "benchmark/benchmark.h"
 #include "simple_rcu/thread_local.h"
@@ -22,17 +23,27 @@
 namespace simple_rcu {
 namespace {
 
+/* TODO
+static void BM_ThreadLocalForTrivialType(benchmark::State& state) {
+  int i = 0;
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(i += ThreadLocal<int, char>::Map().size());
+  }
+  benchmark::DoNotOptimize(i);
+}
+BENCHMARK(BM_ThreadLocalForTrivialType)->ThreadRange(1, 64)->Complexity();
+*/
+
 static void BM_MultiThreaded(benchmark::State& state) {
-  static std::shared_ptr<char> pivot;
+  static ThreadLocal<int, char> shared{-1};
   const int i = state.thread_index();
   if (i == 0) {
-    pivot = std::make_shared<char>();
+    shared = ThreadLocal<int, char>{0};
   }
   for (auto _ : state) {
-    ThreadLocal<int, char>::try_emplace(pivot).first.local()++;
+    shared.try_emplace(0).first++;
   }
-  benchmark::DoNotOptimize(
-      ThreadLocal<int, char>::try_emplace(pivot).first.local());
+  benchmark::DoNotOptimize(shared.try_emplace().first);
 }
 BENCHMARK(BM_MultiThreaded)->ThreadRange(1, 64)->Complexity();
 

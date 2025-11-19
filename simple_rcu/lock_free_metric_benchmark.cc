@@ -84,23 +84,21 @@ struct Context {
   }
 
   std::vector<int64_t> counts;
-  std::shared_ptr<LockFreeMetric<T>> metric =
-      LockFreeMetric<int_fast64_t>::New();
+  LockFreeMetric<T> metric;
 };
 
-static void BM_MultiThreadedUpdate(benchmark::State& state) {
+static void BM_MultiThreadedUpdateThreadLocal(benchmark::State& state) {
   auto& ctx = *Context<int_fast64_t>::Static();
   const int i = state.thread_index();
   if (i == 0) {
     ctx.counts = std::vector<int64_t>(state.threads(), 0);
   }
-  auto local = ctx.metric->ThreadLocalView();
   for (auto _ : state) {
-    local->Update(++ctx.counts[i]);
+    ctx.metric.Update(++ctx.counts[i]);
   }
   if (i == 0) {
     int64_t measured = 0;
-    for (int_fast64_t c : ctx.metric->Collect()) {
+    for (int_fast64_t c : ctx.metric.Collect()) {
       measured += c;
     }
     // Compare the results.
@@ -111,7 +109,7 @@ static void BM_MultiThreadedUpdate(benchmark::State& state) {
     ABSL_CHECK_EQ(expected, measured);
   }
 }
-BENCHMARK(BM_MultiThreadedUpdate)
+BENCHMARK(BM_MultiThreadedUpdateThreadLocal)
     ->ThreadRange(1, 64)
     ->Setup(Setup<Context<int_fast64_t>>)
     ->Teardown(Teardown<Context<int_fast64_t>>)
@@ -124,11 +122,11 @@ static void BM_MultiThreadedCollect(benchmark::State& state) {
     ctx.counts = std::vector<int64_t>(state.threads(), 0);
     int64_t measured = 0;
     for (auto _ : state) {
-      for (int_fast64_t c : ctx.metric->Collect()) {
+      for (int_fast64_t c : ctx.metric.Collect()) {
         measured += c;
       }
     }
-    for (int_fast64_t c : ctx.metric->Collect()) {
+    for (int_fast64_t c : ctx.metric.Collect()) {
       measured += c;
     }
     // Compare the results.
@@ -138,9 +136,8 @@ static void BM_MultiThreadedCollect(benchmark::State& state) {
     }
     ABSL_CHECK_EQ(expected, measured);
   } else {
-    auto local = ctx.metric->ThreadLocalView();
     for (auto _ : state) {
-      local->Update(++ctx.counts[i]);
+      ctx.metric.Update(++ctx.counts[i]);
     }
   }
 }
