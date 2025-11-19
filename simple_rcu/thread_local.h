@@ -19,9 +19,9 @@
 #include <atomic>
 #include <memory>
 #include <utility>
+#include <variant>
 #include <vector>
 
-#include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/absl_check.h"
@@ -71,7 +71,7 @@ InternalThreadLocalOwnedMap();
 //
 // Note that there is usually a considerable performance penalty involved with
 // `thread_local` variables, which is the bottle-neck of this class.
-template <typename L, typename S>
+template <typename L, typename S = std::monostate>
 class ThreadLocal {
  public:
   struct PerThread : public InternalPerThreadBase {
@@ -92,7 +92,7 @@ class ThreadLocal {
   ~ThreadLocal() = default;
 
   std::shared_ptr<S> shared() const noexcept {
-    return std::shared_ptr<S>(shared_, shared_->value);
+    return std::shared_ptr<S>(shared_, &shared_->value);
   }
 
   // Retrieves a thread-local instance bound to `shared`.

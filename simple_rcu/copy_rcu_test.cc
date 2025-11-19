@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "simple_rcu/copy_rcu.h"
+
 #include <functional>
 #include <memory>
-
-#include "simple_rcu/copy_rcu.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -27,22 +27,26 @@ using ::testing::Pointee;
 
 TEST(CopyRcuTest, UpdateAndRead) {
   CopyRcu<int> rcu;
-  CopyRcu<int>::View local1(rcu);
+  CopyRcu<int>::View& local = rcu.ThreadLocalView();
   rcu.Update(42);
-  CopyRcu<int>::View local2(rcu);
-  EXPECT_THAT(local1.Read(), Pointee(42))
+  EXPECT_THAT(local.Read(), Pointee(42))
       << "Thread registered prior Update must receive the value";
-  EXPECT_THAT(local2.Read(), Pointee(42))
+}
+
+TEST(CopyRcuTest, UpdateAndReadAfter) {
+  CopyRcu<int> rcu;
+  rcu.Update(42);
+  CopyRcu<int>::View& local = rcu.ThreadLocalView();
+  EXPECT_THAT(local.Read(), Pointee(42))
       << "Thread registered after Update must also receive the value";
-  EXPECT_NE(local1.Read(), local2.Read())
-      << "Each snapshot must be a different (local) pointer";
 }
 
 TEST(CopyRcuTest, UpdateAndReadConstRef) {
   // Also tests that it works with a type that is not default-constructible.
   const int old_value = 0;
   CopyRcu<const std::reference_wrapper<const int>> rcu(old_value);
-  CopyRcu<const std::reference_wrapper<const int>>::View local(rcu);
+  CopyRcu<const std::reference_wrapper<const int>>::View& local =
+      rcu.ThreadLocalView();
   const int value = 42;
   rcu.Update(value);
   EXPECT_THAT(local.Read(), Pointee(42))
@@ -51,7 +55,7 @@ TEST(CopyRcuTest, UpdateAndReadConstRef) {
 
 TEST(CopyRcuTest, UpdateIf) {
   CopyRcu<int> rcu(0);
-  CopyRcu<int>::View local(rcu);
+  CopyRcu<int>::View& local = rcu.ThreadLocalView();
   rcu.UpdateIf(42, [](int previous) { return previous != 0; });
   EXPECT_THAT(local.Read(), Pointee(0))
       << "Must not update a value that doesn't match the predicate";
@@ -62,7 +66,7 @@ TEST(CopyRcuTest, UpdateIf) {
 
 TEST(CopyRcuTest, ReadRemainsStable) {
   CopyRcu<int> rcu(42);
-  CopyRcu<int>::View local(rcu);
+  CopyRcu<int>::View& local = rcu.ThreadLocalView();
   auto read_ref1 = local.Read();
   rcu.Update(73);
   EXPECT_THAT(read_ref1, Pointee(42))
@@ -78,30 +82,19 @@ TEST(CopyRcuTest, ReadRemainsStable) {
 
 TEST(RcuTest, UpdateAndReadPtr) {
   Rcu<int> rcu;
-  Rcu<int>::View local1(rcu);
-  EXPECT_EQ(local1.ReadPtr(), nullptr);
+  Rcu<int>::View& local = rcu.ThreadLocalView();
+  EXPECT_EQ(local.ReadPtr(), nullptr);
   rcu.Update(std::make_shared<int>(42));
-  Rcu<int>::View local2(rcu);
-  EXPECT_THAT(local1.ReadPtr(), Pointee(42))
-      << "Thread registered prior Update must receive the value";
-  EXPECT_THAT(local2.ReadPtr(), Pointee(42))
-      << "Thread registered after Update must also receive the value";
-  EXPECT_EQ(local1.ReadPtr(), local2.ReadPtr())
-      << "Both pointer snapshots must point to the shared value";
+  EXPECT_THAT(local.ReadPtr(), Pointee(42));
 }
 
 TEST(CopyRcuTest, ThreadLocalUpdateAndRead) {
   {
-    const auto rcu = std::make_shared<Rcu<int>>();
-    EXPECT_EQ(*Read(rcu), nullptr);
-    EXPECT_EQ(ReadPtr(rcu), nullptr);
-    rcu->Update(std::make_shared<int>(42));
-    EXPECT_THAT(Read(rcu), Pointee(Pointee(42)));
-    EXPECT_THAT(ReadPtr(rcu), Pointee(42));
-    EXPECT_EQ(Rcu<int>::CleanUpThreadLocal(), 0);
+    Rcu<int> rcu;
+    EXPECT_EQ(*rcu.Read(), nullptr);
+    rcu.Update(std::make_shared<int>(42));
+    EXPECT_THAT(rcu.Read(), Pointee(Pointee(42)));
   }
-  EXPECT_EQ(Rcu<int>::CleanUpThreadLocal(), 1);
-  EXPECT_EQ(Rcu<int>::CleanUpThreadLocal(), 0);
 }
 
 }  // namespace

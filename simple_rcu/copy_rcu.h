@@ -15,6 +15,7 @@
 #ifndef _SIMPLE_RCU_COPY_RCU_H
 #define _SIMPLE_RCU_COPY_RCU_H
 
+#include <functional>
 #include <memory>
 #include <type_traits>
 #include <utility>
@@ -77,15 +78,15 @@ class CopyRcu {
   // (and `ReadPtr()`) methods are only thread-compatible. Callers are expected
   // to construct a separate `View` instance for each reader thread.
   class View final {
+   private:
+    struct PrivateConstructed {};
+
    public:
     // Thread-safe. Argument `rcu` must outlive this instance.
-    // Acquires a mutex to register (and deregister in `~Local`) in `rcu`,
-    // therefore it'll block waiting on the mutex if a concurrent call to
-    // `Update` is running.
-    View(CopyRcu &rcu)
-        : snapshot_depth_(0), local_(rcu, absl::MutexLock(&rcu.lock_)) {}
-    View(std::shared_ptr<CopyRcu> rcu)
-        : snapshot_depth_(0), local_(rcu, absl::MutexLock(&rcu->lock_)) {}
+    // Acquires a mutex to register in `rcu`, therefore it'll block waiting on
+    // the mutex if a concurrent call to `Update` is running.
+    View(PrivateConstructed, CopyRcu &rcu)
+        : snapshot_depth_(0), local_rcu_(rcu.Current()) {}
 
     // Obtains a read snapshot to the current value held by the RCU.
     // Never returns `nullptr`.
@@ -101,11 +102,11 @@ class CopyRcu {
     //
     // WARNING: Do not use `reset` or `release` on the returned `unique_ptr`.
     // Doing so is likely to lead to undefined behavior.
-    Snapshot Read() noexcept {
+    inline Snapshot Read() noexcept {
       if (snapshot_depth_++ == 0) {
-        local_.local_rcu.TryRead();
+        local_rcu_.TryRead();
       }
-      return Snapshot(&local_.local_rcu.Read(), SnapshotDeleter<>(*this));
+      return Snapshot(&local_rcu_.Read(), SnapshotDeleter<>(*this));
     }
 
     // In case `T` is a `std::shared_ptr`, `ReadPtr` provides convenient access
@@ -116,61 +117,28 @@ class CopyRcu {
     // internal reference counting or invoking `~T`. Rather the pointer is
     // destroyed by the updater thread during one of the subsequent `Update`
     // passes.
-    template <typename U = T>
-    std::unique_ptr<typename U::element_type,
-                    SnapshotDeleter<typename U::element_type>>
-    ReadPtr() noexcept {
+    template <typename U = T, typename E = typename U::element_type>
+    std::unique_ptr<E, SnapshotDeleter<E>> inline ReadPtr() noexcept {
       Snapshot snapshot = Read();
       if (*snapshot == nullptr) {
         // For a `nullptr` there is no value to keep. Therefore we can just let
         // `snapshot` get deleted and create a `nullptr`, which won't invoke
         // its deleter.
-        return {nullptr, SnapshotDeleter<typename U::element_type>(*this)};
+        return {nullptr, SnapshotDeleter<E>(*this)};
       } else {
-        return {snapshot.release()->get(),
-                SnapshotDeleter<typename U::element_type>(*this)};
+        return {snapshot.release()->get(), SnapshotDeleter<E>(*this)};
       }
     }
 
    private:
     // Holds a `Local3StateRcu<MutableT>` and maintains its registration in
     // `CopyRcu`.
-    struct Local {
-     public:
-      // The constructors are designed to accept a `MutexLock` to ensure the
-      // whole object becomes protected during its construction. This way
-      // `CopyRcu` will never observe a partially constructed `Local` instance.
-      Local(CopyRcu &rcu_, const absl::MutexLock &)
-          // ABSL_EXCLUSIVE_LOCKS_REQUIRED(rcu_.lock_)
-          : local_rcu(rcu_.RegisterLocked(*this)), rcu(&rcu_) {
-        rcu_.lock_.AssertHeld();
-      }
-      Local(std::shared_ptr<CopyRcu> rcu_, const absl::MutexLock &)
-          // ABSL_EXCLUSIVE_LOCKS_REQUIRED(rcu_->lock_)
-          : local_rcu(rcu_->RegisterLocked(*this)), rcu(rcu_) {
-        rcu_->lock_.AssertHeld();
-      }
-      ~Local() {
-        CopyRcu *const *ptr = absl::get_if<0>(&rcu);
-        if (ptr != nullptr) {
-          (*ptr)->Unregister(*this);
-        } else {
-          const std::shared_ptr<CopyRcu> rcu_ptr = absl::get<1>(rcu).lock();
-          if (rcu_ptr != nullptr) {
-            rcu_ptr->Unregister(*this);
-          }
-        }
-      }
-
-      Local3StateRcu<MutableT> local_rcu;
-      const absl::variant<CopyRcu *, const std::weak_ptr<CopyRcu>> rcu;
-    };
 
     // Incremented with each `Snapshot` instance. Ensures that `TryRead` is
     // invoked only for the outermost `Snapshot`, keeping its value unchanged
     // for its whole lifetime.
     int_fast16_t snapshot_depth_;
-    Local local_;
+    Local3StateRcu<MutableT> local_rcu_;
 
     friend class CopyRcu;
   };
@@ -178,7 +146,7 @@ class CopyRcu {
   // Constructs a RCU with an initial value `T()`.
   CopyRcu() : CopyRcu(T()) {}
   explicit CopyRcu(T initial_value)
-      : lock_(), value_(std::move(initial_value)), locals_() {}
+      : lock_(), views_(std::move(initial_value)) {}
 
   // Updates `value` in all registered `View` threads.
   // Returns the previous value. Note that the previous value can still be
@@ -199,101 +167,58 @@ class CopyRcu {
                              absl::FunctionRef<bool(const T &)> pred)
       ABSL_LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
-    if (pred(value_)) {
+    if (pred(*views_.shared())) {
       return absl::make_optional(UpdateLocked(std::move(value)));
-    } else {
-      return absl::nullopt;
     }
+    return absl::nullopt;
   }
 
-  // Retrieves a thread-local instalce of `View` bound to `rcu`.
-  // It keeps a `std::weak_ptr` to `rcu` so that it unregisters from it if (and
-  // only if) `rcu` is still alive when this thread is destroyed.
-  //
-  // The returned reference is valid until a next call to `GetThreadLocal` or
-  // `CleanUpThreadLocal` by the same thread.
-  static View &GetThreadLocal(std::shared_ptr<CopyRcu> rcu) noexcept {
-    auto pair = ThreadLocal<std::unique_ptr<View>, CopyRcu>::try_emplace(
-        std::move(rcu));
-    if (pair.second) {  // Inserted.
-      pair.first.local() = absl::make_unique<View>(pair.first.shared());
-      int deleted_count = CleanUpThreadLocal();
-      ABSL_DLOG_IF(INFO, deleted_count > 0)
-          << "Cleaned up " << deleted_count
-          << " expired `View` instances from the thread-local map";
-    }
-    return *pair.first.local();
+  inline View &ThreadLocalView() noexcept {
+    return views_
+        .try_emplace(typename View::PrivateConstructed{}, std::ref(*this))
+        .first;
   }
 
-  // Cleans up `View` instances created by `GetThreadLocal`, whose `CopyRcu`
-  // parent objects have been deleted (as determined by their internal
-  // `std::weak_ptr<CopyRcu>`).
-  // Returns the number of deleted instances.
+  // A variant of `View::Read()` that automatically maintains a `thread_local`
+  // instance of `View` bound to `this`.
   //
-  // This function is called automatically by `GetThreadLocal` when it adds a
-  // new `View` instance to the map, so in most cases it's not necessary to
-  // call it explicitly.
-  static int CleanUpThreadLocal() noexcept {
-    return ThreadLocal<std::unique_ptr<View>, CopyRcu>::CleanUp();
+  // This makes this function easier to use compared to an explicit management
+  // of `View`, at the cost of some small inherent performance overhead of
+  // `thread_local`.
+  inline Snapshot Read() noexcept { return ThreadLocalView().Read(); }
+
+  // A variant of `View::ReadPtr()` that automatically maintains a
+  // `thread_local` instance of `View` bound to `this`.
+  //
+  // This makes this function easier to use compared to an explicit management
+  // of `View`, at the cost of some inherent performance overhead of
+  // `thread_local`.
+  template <typename U = T, typename E = typename U::element_type>
+  inline std::unique_ptr<E, typename CopyRcu<U>::template SnapshotDeleter<E>>
+  ReadPtr() noexcept {
+    return ThreadLocalView().ReadPtr();
   }
 
  private:
   T UpdateLocked(typename std::remove_const<T>::type value)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
-    for (auto *local : locals_) {
-      Local3StateRcu<MutableT> &local_rcu = local->local_rcu;
+    for (std::shared_ptr<View> &view : views_.Prune().current) {
+      Local3StateRcu<MutableT> &local_rcu = view->local_rcu_;
       local_rcu.Update() = value;
       local_rcu.ForceUpdate();
     }
-    std::swap(value_, value);
+    std::swap(*views_.shared(), value);
     return value;
   }
 
-  // Returns the current value.
-  T RegisterLocked(typename View::Local &local) ABSL_MUST_USE_RESULT
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
-    locals_.insert(&local);
-    return value_;
-  }
-
-  void Unregister(typename View::Local &local) ABSL_LOCKS_EXCLUDED(lock_) {
+  T Current() ABSL_MUST_USE_RESULT ABSL_LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
-    locals_.erase(&local);
+    return *views_.shared();
   }
 
   absl::Mutex lock_;
-  // The current value that has been distributed to all thread-`View`
-  // instances.
-  MutableT value_ ABSL_GUARDED_BY(lock_);
-  // List of registered thread-`View` instances.
-  absl::flat_hash_set<typename View::Local *> locals_ ABSL_GUARDED_BY(lock_);
+  ThreadLocal<View, MutableT> views_;
 };
-
-// A variant of `CopyRcu<T>::View::Read()` that automatically maintains a
-// `thread_local` instance of `CopyRcu<T>::View` bound to `rcu`.
-//
-// This makes this function easier to use compared to an explicit management of
-// `View`, at the cost of some inherentt performance overhead of
-// `thread_local`.
-template <typename T>
-inline typename CopyRcu<T>::Snapshot Read(
-    std::shared_ptr<CopyRcu<T>> rcu) noexcept {
-  return CopyRcu<T>::GetThreadLocal(std::move(rcu)).Read();
-}
-
-// A variant of `CopyRcu<T>::View::ReadPtr()` that automatically maintains a
-// `thread_local` instance of `CopyRcu<T>::View` bound to `rcu`.
-//
-// This makes this function easier to use compared to an explicit management of
-// `View`, at the cost of some inherentt performance overhead of
-// `thread_local`.
-template <typename T>
-inline std::unique_ptr<
-    typename T::element_type,
-    typename CopyRcu<T>::template SnapshotDeleter<typename T::element_type>>
-ReadPtr(std::shared_ptr<CopyRcu<T>> rcu) noexcept {
-  return CopyRcu<T>::GetThreadLocal(std::move(rcu)).template ReadPtr<T>();
-}
 
 // By using `CopyRcu<shared_ptr<const T>>` we accomplish a RCU implementation
 // with the common API
