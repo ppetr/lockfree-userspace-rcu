@@ -59,7 +59,8 @@ class InternalPerThreadBase {
 
   // Keeps shared global objects as keys and values map into per-thread objects
   // owned by the global key.
-  static absl::flat_hash_map<void *, std::shared_ptr<void>> &OwnedMap();
+  static absl::flat_hash_map<std::shared_ptr<void>, std::shared_ptr<void>> &
+  OwnedMap();
 
   template <typename L, typename S>
   friend class ThreadLocalLazy;
@@ -173,16 +174,11 @@ class ThreadLocalStrict {
  public:
   template <typename... Args>
   explicit ThreadLocalStrict(Args... args_)
-      : shared_(std::make_shared<Shared>(std::forward<Args>(args_)...)) {}
-  ~ThreadLocalStrict() {
-    // Free memory held by the set in case the `shared_ptr` is held by some `L`
-    // (or other) objects.
-    shared_->Clear();
-  }
+      : shared_(std::make_shared<S>(std::forward<Args>(args_)...)),
+        locals_(std::make_shared<LocalsList>()) {}
+  ~ThreadLocalStrict() = default;
 
-  std::shared_ptr<S> shared() const noexcept {
-    return std::shared_ptr<S>(shared_, &shared_->value);
-  }
+  std::shared_ptr<S> shared() const noexcept { return shared_; }
 
   // Retrieves a thread-local instance bound to `shared`.
   //
@@ -195,10 +191,10 @@ class ThreadLocalStrict {
   template <typename... Args>
   inline std::pair<L &, bool> try_emplace(Args... args) {
     auto &map_ptr =
-        InternalPerThreadBase::OwnedMap()[ABSL_DIE_IF_NULL(shared_.get())];
+        InternalPerThreadBase::OwnedMap()[ABSL_DIE_IF_NULL(shared_)];
     if (map_ptr == nullptr) {
       auto owned = std::make_shared<PerThread>(std::forward<Args>(args)...);
-      shared_->Add(owned);
+      locals_->Add(owned);
       map_ptr = owned;
       return {*owned, true};
     } else {
@@ -206,27 +202,17 @@ class ThreadLocalStrict {
     }
   }
 
-  std::vector<std::shared_ptr<L>> Prune() { return shared_->Prune(); }
+  std::vector<std::shared_ptr<L>> Prune() { return locals_->Prune(); }
 
  private:
   using PerThread = L;
 
-  class Shared {
+  class LocalsList {
    public:
-    S value;
-
-    template <typename... Args>
-    explicit Shared(Args... args_) : value(std::forward<Args>(args_)...) {}
-
     void Add(std::weak_ptr<PerThread> ptr)
         ABSL_LOCKS_EXCLUDED(per_thread_lock_) {
       absl::MutexLock mutex(&per_thread_lock_);
       per_thread_.emplace_back(ptr);
-    }
-
-    void Clear() ABSL_LOCKS_EXCLUDED(per_thread_lock_) {
-      absl::MutexLock mutex(&per_thread_lock_);
-      per_thread_.clear();
     }
 
     std::vector<std::shared_ptr<L>> Prune()
@@ -260,7 +246,8 @@ class ThreadLocalStrict {
   };
 
   // Never nullptr (unless moved out).
-  std::shared_ptr<Shared> shared_;
+  std::shared_ptr<S> shared_;
+  std::shared_ptr<LocalsList> locals_;
 };
 
 }  // namespace simple_rcu
