@@ -29,7 +29,7 @@ target_include_directories(local_3state_exchange INTERFACE .)
 target_link_libraries(local_3state_exchange INTERFACE lock_free_int atomic)
 
 add_library(thread_local thread_local.cc)
-target_link_libraries(thread_local absl::absl_check absl::absl_log absl::die_if_null absl::flat_hash_map absl::core_headers)
+target_link_libraries(thread_local lock_free_int absl::absl_check absl::absl_log absl::die_if_null absl::flat_hash_map absl::core_headers)
 
 add_executable(thread_local_benchmark thread_local_benchmark.cc)
 target_link_libraries(thread_local_benchmark thread_local absl::absl_check benchmark::benchmark_main)

@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <atomic>
 #include <memory>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -27,28 +28,30 @@
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/die_if_null.h"
+#include "simple_rcu/lock_free_int.h"
 
 namespace simple_rcu {
 
 class InternalPerThreadBase {
  private:
-  ~InternalPerThreadBase() = default;
+  using AtomicBool = std::conditional<
+      std::atomic<bool>::is_always_lock_free, bool,
+      std::conditional<std::is_void_v<AtomicSignedLockFree>, bool,
+                       AtomicSignedLockFree>::type>::type;
 
   struct MarkAbandoned {
     void operator()(InternalPerThreadBase *b) {
-      b->held_.clear(std::memory_order_release);
+      b->abandoned_.store(true, std::memory_order_release);
     }
   };
 
-  std::atomic_flag held_;
-  bool abandoned_ = false;
+  std::atomic<AtomicBool> abandoned_;
 
-  bool abandoned() {
-    return abandoned_ || (!held_.test_and_set(std::memory_order_acquire) &&
-                          (abandoned_ = true));
-  }
+  InternalPerThreadBase() : abandoned_(false) {}
+  ~InternalPerThreadBase() = default;
 
-  InternalPerThreadBase() { held_.test_and_set(); }
+  bool abandoned() { return abandoned_.load(std::memory_order_acquire); }
+
 
   // Keeps shared global objects as keys and values map into per-thread objects
   // owned by the global key.
