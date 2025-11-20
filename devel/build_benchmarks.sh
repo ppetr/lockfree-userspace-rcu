@@ -21,13 +21,13 @@ echo "Signature: 8a477f597d28d172789f06886806bc55" >"${BASE}/build/CACHEDIR.TAG"
 
 schedtool -B -n10 $$ || true
 
-for TOOLCHAIN in clang14 gcc ; do
+for TOOLCHAIN in gcc clang ; do
   DIR="${BASE}/build/rel-${TOOLCHAIN}"
   mkdir -p "$DIR"
   cd "$DIR"
   cmake -DCMAKE_TOOLCHAIN_FILE="${BASE}/devel/toolchain-${TOOLCHAIN}.cmake" \
-    -DBENCHMARK_ENABLE_LTO=true -DCMAKE_BUILD_TYPE=Release "$@" "$BASE"
-  make -j all
+    -DBENCHMARK_ENABLE_LTO=true -DCMAKE_BUILD_TYPE=Release "$BASE"
+  make -j "$@"
 done
 cd "$BASE"
 ls -l build/rel-*/simple_rcu/*_benchmark

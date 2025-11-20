@@ -26,7 +26,7 @@ mkdir -p "$DIR"
 cd "$DIR"
 while true ; do
   # When compiling with
-  # -DCMAKE_TOOLCHAIN_FILE="$(pwd)/devel/toolchain-clang11.cmake"
+  # -DCMAKE_TOOLCHAIN_FILE="$(pwd)/devel/toolchain-clang.cmake"
   # flag CMAKE_EXPORT_COMPILE_COMMANDS produces
   # build/dev/compile_commands.json. Symlink it to the project's root directory
   # to enable linting in editors that support this feature.
