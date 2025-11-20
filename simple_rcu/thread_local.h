@@ -174,8 +174,7 @@ class ThreadLocalStrict {
  public:
   template <typename... Args>
   explicit ThreadLocalStrict(Args... args_)
-      : shared_(std::make_shared<S>(std::forward<Args>(args_)...)),
-        locals_(std::make_shared<LocalsList>()) {}
+      : shared_(std::make_shared<S>(std::forward<Args>(args_)...)), locals_() {}
   ~ThreadLocalStrict() = default;
 
   std::shared_ptr<S> shared() const noexcept { return shared_; }
@@ -194,7 +193,7 @@ class ThreadLocalStrict {
         InternalPerThreadBase::OwnedMap()[ABSL_DIE_IF_NULL(shared_)];
     if (map_ptr == nullptr) {
       auto owned = std::make_shared<PerThread>(std::forward<Args>(args)...);
-      locals_->Add(owned);
+      locals_.Add(owned);
       map_ptr = owned;
       return {*owned, true};
     } else {
@@ -202,7 +201,7 @@ class ThreadLocalStrict {
     }
   }
 
-  std::vector<std::shared_ptr<L>> Prune() { return locals_->Prune(); }
+  std::vector<std::shared_ptr<L>> Prune() { return locals_.Prune(); }
 
  private:
   using PerThread = L;
@@ -247,7 +246,7 @@ class ThreadLocalStrict {
 
   // Never nullptr (unless moved out).
   std::shared_ptr<S> shared_;
-  std::shared_ptr<LocalsList> locals_;
+  LocalsList locals_;
 };
 
 }  // namespace simple_rcu

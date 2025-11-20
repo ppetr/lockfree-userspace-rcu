@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "absl/base/attributes.h"
 #include "absl/log/absl_check.h"
@@ -24,15 +25,18 @@ namespace simple_rcu {
 namespace {
 
 static void BM_MultiThreaded(benchmark::State& state) {
-  static ThreadLocalLazy<int, char> shared{-1};
+  static std::optional<ThreadLocalLazy<int, char>> shared;
   const int i = state.thread_index();
   if (i == 0) {
-    shared = ThreadLocalLazy<int, char>{0};
+    shared.emplace(0);
   }
   for (auto _ : state) {
-    shared.try_emplace(0).first++;
+    shared->try_emplace(0).first++;
   }
-  benchmark::DoNotOptimize(shared.try_emplace().first);
+  benchmark::DoNotOptimize(shared->try_emplace().first);
+  if (i == 0) {
+    shared.reset();
+  }
 }
 BENCHMARK(BM_MultiThreaded)->ThreadRange(1, 64)->Complexity();
 
