@@ -52,18 +52,25 @@ class InternalPerThreadBase {
 
   bool abandoned() { return abandoned_.load(std::memory_order_acquire); }
 
+  // Using `static thread_local` instances in the .cc module in the functions
+  // below is much more performant then having them templated in the .h file.
+  //
+  // Using `shared_ptr`s as keys ensures that they remain unique as long as
+  // they're used. Using just `void*` can lead to cases when a new pointer is
+  // allocated at exactly the same address, then mapped to instances which
+  // don't belong to it, and crashes.
 
   // Keeps shared global objects as keys and values map into per-thread objects
   // owned by the global key.
   static absl::flat_hash_map<
       std::shared_ptr<void>,
-      std::unique_ptr<InternalPerThreadBase, MarkAbandoned>> &
-  NonOwnedMap();
+      std::unique_ptr<InternalPerThreadBase, MarkAbandoned>>
+      &NonOwnedMap();
 
   // Keeps shared global objects as keys and values map into per-thread objects
   // owned by the global key.
-  static absl::flat_hash_map<std::shared_ptr<void>, std::shared_ptr<void>> &
-  OwnedMap();
+  static absl::flat_hash_map<std::shared_ptr<void>, std::shared_ptr<void>>
+      &OwnedMap();
 
   template <typename L, typename S>
   friend class ThreadLocalLazy;
@@ -71,11 +78,17 @@ class InternalPerThreadBase {
   friend class ThreadLocalStrict;
 };
 
-// Lock-free thread-local variables of type `L` that are identified by a shared
-// state of `shared_ptr<S>::get()`.
+// Fast, lock-free thread-local variables of type `L` that are identified by a
+// shared state of type `S`. They're created on-demand by `try_emplace` and
+// kept (at least) as long as the respective thread is running.
 //
-// Note that there is usually a considerable performance penalty involved with
-// `thread_local` variables, which is the bottle-neck of this class.
+// This implementation is "lazy" in the sense that thread-local instances of
+// `L` aren't destroyed by the respective threads when they finish. Instead,
+// they're owned by the central `ThreadLocalLazy` instance and such abandoned
+// ones are extracted by calling by the `ThreadLocalLazyPrune` method.
+//
+// This allows (1) to asynchronously process any state left over there and
+// (2) speeds up destruction of finishing threads.
 template <typename L, typename S = std::monostate>
 class ThreadLocalLazy {
  public:
@@ -85,10 +98,6 @@ class ThreadLocalLazy {
 
     template <typename... Args>
     explicit PerThread(Args... args_) : value(std::forward<Args>(args_)...) {}
-  };
-  struct PruneResult {
-    std::vector<std::shared_ptr<L>> current;
-    std::vector<std::unique_ptr<PerThread>> abandoned;
   };
 
   template <typename... Args>
@@ -128,6 +137,20 @@ class ThreadLocalLazy {
     }
   }
 
+  // See the `Prune` method below.
+  struct PruneResult {
+    std::vector<std::shared_ptr<L>> current;
+    std::vector<std::unique_ptr<PerThread>> abandoned;
+  };
+
+  // Iterates through all `L` instances bound to this central one.
+  // They are returned in the result, split into two part:
+  //
+  // - `current` contains the ones that are still referenced by their
+  //   respective thread.
+  // - `abandoned` contains the ones whose respective thread has finished and
+  //   therefore their ownership is handed over to the caller to destroy (or
+  //   otherwise utilize) them.
   PruneResult Prune() {
     PruneResult result;
     absl::MutexLock mutex(&shared_->per_thread_lock);
@@ -169,9 +192,6 @@ class ThreadLocalLazy {
 
 // Lock-free thread-local variables of type `L` that are identified by a shared
 // state of `shared_ptr<S>::get()`.
-//
-// Note that there is usually a considerable performance penalty involved with
-// `thread_local` variables, which is the bottle-neck of this class.
 template <typename L, typename S = std::monostate>
 class ThreadLocalStrict {
  public:
