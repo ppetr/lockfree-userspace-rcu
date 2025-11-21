@@ -73,15 +73,15 @@ class InternalPerThreadBase {
 
   std::atomic<AtomicBool> abandoned_;
 
-  template <typename L, typename S>
+  template <typename L>
   friend class ThreadLocalDelayed;
-  template <typename L, typename S>
+  template <typename L>
   friend class ThreadLocalWeak;
 };
 
-// Fast, lock-free thread-local variables of type `L` that are identified by a
-// shared state of type `S`. They're created on-demand by `try_emplace` and
-// kept (at least) as long as the respective thread is running.
+// Fast, lock-free thread-local variables of type `L` bound to a central
+// object. They're created on-demand by `try_emplace` and kept (at least) as
+// long as the respective thread is running.
 //
 // This implementation is "delayed" in the sense that thread-local instances of
 // `L` aren't destroyed by the respective threads when they finish. Instead,
@@ -91,7 +91,7 @@ class InternalPerThreadBase {
 //
 // This allows (1) to asynchronously process any state left over there and
 // (2) speeds up destruction of finishing threads.
-template <typename L, typename S = std::monostate>
+template <typename L>
 class ThreadLocalDelayed {
  public:
   struct PerThread : public InternalPerThreadBase {
@@ -102,14 +102,8 @@ class ThreadLocalDelayed {
     explicit PerThread(Args... args_) : value(std::forward<Args>(args_)...) {}
   };
 
-  template <typename... Args>
-  explicit ThreadLocalDelayed(Args... args_)
-      : shared_(std::make_shared<Shared>(std::forward<Args>(args_)...)) {}
+  ThreadLocalDelayed() : shared_(std::make_shared<Shared>()) {}
   ~ThreadLocalDelayed() = default;
-
-  std::shared_ptr<S> shared() const noexcept {
-    return std::shared_ptr<S>(shared_, &shared_->value);
-  }
 
   // Retrieves a thread-local instance bound to `shared`.
   //
@@ -184,11 +178,6 @@ class ThreadLocalDelayed {
 
  private:
   struct Shared {
-    S value;
-
-    template <typename... Args>
-    explicit Shared(Args... args_) : value(std::forward<Args>(args_)...) {}
-
     absl::Mutex per_thread_lock;
     std::vector<std::unique_ptr<PerThread>> per_thread
         ABSL_GUARDED_BY(per_thread_lock);
@@ -198,23 +187,19 @@ class ThreadLocalDelayed {
   std::shared_ptr<Shared> shared_;
 };
 
-// Fast, lock-free thread-local variables of type `L` that are identified by a
-// shared state of type `S`. They're created on-demand by `try_emplace` and
+// Fast, lock-free thread-local variables of type `L` bound to a central
+// object. They're created on-demand by `try_emplace` and kept (at least) as
 // kept (at least) as long as the respective thread is running.
 //
 // This implementation is "weak" in the sense that thread-local instances of
 // `L` are only weakly referenced by the central class. When a thread finishes
 // execution, its `ThreadLocalWeak` variables will be destroyed, unless they
 // have been `lock()`-ed by a previously/concurrently running call to `Prune`.
-template <typename L, typename S = std::monostate>
+template <typename L>
 class ThreadLocalWeak {
  public:
-  template <typename... Args>
-  explicit ThreadLocalWeak(Args... args_)
-      : shared_(std::make_shared<S>(std::forward<Args>(args_)...)), locals_() {}
+  ThreadLocalWeak() : shared_(std::make_shared<std::monostate>()) {}
   ~ThreadLocalWeak() = default;
-
-  std::shared_ptr<S> shared() const noexcept { return shared_; }
 
   // Retrieves a thread-local instance bound to `shared`.
   //
@@ -309,7 +294,7 @@ class ThreadLocalWeak {
   };
 
   // Never nullptr (unless moved out).
-  std::shared_ptr<S> shared_;
+  std::shared_ptr<std::monostate> shared_;
   LocalsList locals_;
 };
 

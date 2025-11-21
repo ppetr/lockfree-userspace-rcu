@@ -146,7 +146,7 @@ class CopyRcu {
   // Constructs a RCU with an initial value `T()`.
   CopyRcu() : CopyRcu(T()) {}
   explicit CopyRcu(T initial_value)
-      : lock_(), views_(std::move(initial_value)) {}
+      : lock_(), current_(std::move(initial_value)), views_() {}
 
   // Updates `value` in all registered `View` threads.
   // Returns the previous value. Note that the previous value can still be
@@ -167,7 +167,7 @@ class CopyRcu {
                              absl::FunctionRef<bool(const T &)> pred)
       ABSL_LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
-    if (pred(*views_.shared())) {
+    if (pred(current_)) {
       return absl::make_optional(UpdateLocked(std::move(value)));
     }
     return absl::nullopt;
@@ -207,17 +207,18 @@ class CopyRcu {
       local_rcu.Update() = value;
       local_rcu.ForceUpdate();
     }
-    std::swap(*views_.shared(), value);
+    std::swap(current_, value);
     return value;
   }
 
   ABSL_MUST_USE_RESULT T Current() ABSL_LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
-    return *views_.shared();
+    return current_;
   }
 
   absl::Mutex lock_;
-  ThreadLocalWeak<View, MutableT> views_;
+  MutableT current_ ABSL_GUARDED_BY(lock_);
+  ThreadLocalWeak<View> views_;
 };
 
 // By using `CopyRcu<shared_ptr<const T>>` we accomplish a RCU implementation
