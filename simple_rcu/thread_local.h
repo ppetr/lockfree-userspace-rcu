@@ -82,10 +82,11 @@ class InternalPerThreadBase {
 // shared state of type `S`. They're created on-demand by `try_emplace` and
 // kept (at least) as long as the respective thread is running.
 //
-// This implementation is "lazy" in the sense that thread-local instances of
+// This implementation is "delayed" in the sense that thread-local instances of
 // `L` aren't destroyed by the respective threads when they finish. Instead,
-// they're owned by the central `ThreadLocalDelayed` instance and such abandoned
-// ones are extracted by calling by the `ThreadLocalDelayed::Prune` method.
+// they're owned by the central `ThreadLocalDelayed` instance and such
+// abandoned ones are extracted by calling by the `ThreadLocalDelayed::Prune`
+// method.
 //
 // This allows (1) to asynchronously process any state left over there and
 // (2) speeds up destruction of finishing threads.
@@ -148,7 +149,8 @@ class ThreadLocalDelayed {
   // They are returned in the result, split into two part:
   //
   // - `current` contains the ones that are still referenced by their
-  //   respective thread.
+  //   creator threads. The caller is responsible for any required
+  //   synchronization of these values with respect to their creator threads.
   // - `abandoned` contains the ones whose respective thread has finished and
   //   therefore their ownership is handed over to the caller to destroy (or
   //   otherwise utilize) them.
@@ -191,8 +193,14 @@ class ThreadLocalDelayed {
   std::shared_ptr<Shared> shared_;
 };
 
-// Lock-free thread-local variables of type `L` that are identified by a shared
-// state of `shared_ptr<S>::get()`.
+// Fast, lock-free thread-local variables of type `L` that are identified by a
+// shared state of type `S`. They're created on-demand by `try_emplace` and
+// kept (at least) as long as the respective thread is running.
+//
+// This implementation is "weak" in the sense that thread-local instances of
+// `L` are only weakly referenced by the central class. When a thread finishes
+// execution, its `ThreadLocalWeak` variables will be destroyed, unless they
+// have been `lock()`-ed by a previously/concurrently running call to `Prune`.
 template <typename L, typename S = std::monostate>
 class ThreadLocalWeak {
  public:
@@ -240,6 +248,9 @@ class ThreadLocalWeak {
 
   // Cleans up all expired `weak-ptr`s from an internal bookkeeping list.
   // The ones that are still referenced are `weak_ptr::lock()`-ed and returned.
+  //
+  // The caller is responsible for any required synchronization of the returned
+  // values with respect to the threads that created them.
   std::vector<std::shared_ptr<L>> PruneAndList() {
     return locals_.PruneAndList();
   }
