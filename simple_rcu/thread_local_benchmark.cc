@@ -25,7 +25,7 @@ namespace simple_rcu {
 namespace {
 
 static void BM_MultiThreaded(benchmark::State& state) {
-  static std::optional<ThreadLocalLazy<int, char>> shared;
+  static std::optional<ThreadLocalDelayed<int, char>> shared;
   const int i = state.thread_index();
   if (i == 0) {
     shared.emplace(0);

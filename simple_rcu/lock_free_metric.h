@@ -190,7 +190,7 @@ class LockFreeMetric {
  private:
   using Local = LocalLockFreeMetric<C, D>;
 
-  ThreadLocalLazy<Local> locals_;
+  ThreadLocalDelayed<Local> locals_;
 };
 
 }  // namespace simple_rcu

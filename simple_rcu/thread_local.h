@@ -73,9 +73,9 @@ class InternalPerThreadBase {
       &OwnedMap();
 
   template <typename L, typename S>
-  friend class ThreadLocalLazy;
+  friend class ThreadLocalDelayed;
   template <typename L, typename S>
-  friend class ThreadLocalStrict;
+  friend class ThreadLocalWeak;
 };
 
 // Fast, lock-free thread-local variables of type `L` that are identified by a
@@ -84,13 +84,13 @@ class InternalPerThreadBase {
 //
 // This implementation is "lazy" in the sense that thread-local instances of
 // `L` aren't destroyed by the respective threads when they finish. Instead,
-// they're owned by the central `ThreadLocalLazy` instance and such abandoned
-// ones are extracted by calling by the `ThreadLocalLazyPrune` method.
+// they're owned by the central `ThreadLocalDelayed` instance and such abandoned
+// ones are extracted by calling by the `ThreadLocalDelayed::Prune` method.
 //
 // This allows (1) to asynchronously process any state left over there and
 // (2) speeds up destruction of finishing threads.
 template <typename L, typename S = std::monostate>
-class ThreadLocalLazy {
+class ThreadLocalDelayed {
  public:
   struct PerThread : public InternalPerThreadBase {
    public:
@@ -101,9 +101,9 @@ class ThreadLocalLazy {
   };
 
   template <typename... Args>
-  explicit ThreadLocalLazy(Args... args_)
+  explicit ThreadLocalDelayed(Args... args_)
       : shared_(std::make_shared<Shared>(std::forward<Args>(args_)...)) {}
-  ~ThreadLocalLazy() = default;
+  ~ThreadLocalDelayed() = default;
 
   std::shared_ptr<S> shared() const noexcept {
     return std::shared_ptr<S>(shared_, &shared_->value);
@@ -116,7 +116,8 @@ class ThreadLocalLazy {
   // constructed from `args` and `true` is returned in the 2nd part of the
   // result.
   //
-  // The returned `ThreadLocalLazy::shared()` is set to the `shared` argument.
+  // The returned `ThreadLocalDelayed::shared()` is set to the `shared`
+  // argument.
   template <typename... Args>
   inline std::pair<L &, bool> try_emplace(Args... args) {
     auto &map_ptr =
@@ -193,12 +194,12 @@ class ThreadLocalLazy {
 // Lock-free thread-local variables of type `L` that are identified by a shared
 // state of `shared_ptr<S>::get()`.
 template <typename L, typename S = std::monostate>
-class ThreadLocalStrict {
+class ThreadLocalWeak {
  public:
   template <typename... Args>
-  explicit ThreadLocalStrict(Args... args_)
+  explicit ThreadLocalWeak(Args... args_)
       : shared_(std::make_shared<S>(std::forward<Args>(args_)...)), locals_() {}
-  ~ThreadLocalStrict() = default;
+  ~ThreadLocalWeak() = default;
 
   std::shared_ptr<S> shared() const noexcept { return shared_; }
 
@@ -209,7 +210,7 @@ class ThreadLocalStrict {
   // constructed from `args` and `true` is returned in the 2nd part of the
   // result.
   //
-  // The returned `ThreadLocalStrict::shared()` is set to the `shared` argument.
+  // The returned `ThreadLocalWeak::shared()` is set to the `shared` argument.
   template <typename... Args>
   inline std::pair<L &, bool> try_emplace(Args... args) {
     auto &map_ptr =
@@ -225,6 +226,16 @@ class ThreadLocalStrict {
   }
 
   std::vector<std::shared_ptr<L>> Prune() { return locals_.Prune(); }
+  // TODO: Document
+  void erase() {
+    auto &map = InternalPerThreadBase::OwnedMap();
+    auto it = map.find(shared_);
+    if (it != map.end()) {
+      map.erase(it);
+    }
+  }
+
+  // TODO: Document
 
  private:
   using PerThread = L;
@@ -255,13 +266,15 @@ class ThreadLocalStrict {
    private:
     void PruneOnlyInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(per_thread_lock_) {
       // Shrink-to-fit before removals as a small optimization - possibly the
-      // roughly same number of new entries will be added until next call.
+      // roughly same number of new entries will be added until the next call.
       per_thread_.shrink_to_fit();
       per_thread_.erase(std::remove_if(per_thread_.begin(), per_thread_.end(),
                                        [](auto &ptr) { return ptr.expired(); }),
                         per_thread_.end());
+      return per_thread_;
     }
 
+   private:
     absl::Mutex per_thread_lock_;
     std::vector<std::weak_ptr<PerThread>> per_thread_
         ABSL_GUARDED_BY(per_thread_lock_);

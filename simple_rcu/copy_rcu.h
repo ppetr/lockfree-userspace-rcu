@@ -217,7 +217,7 @@ class CopyRcu {
   }
 
   absl::Mutex lock_;
-  ThreadLocalStrict<View, MutableT> views_;
+  ThreadLocalWeak<View, MutableT> views_;
 };
 
 // By using `CopyRcu<shared_ptr<const T>>` we accomplish a RCU implementation
