@@ -175,10 +175,11 @@ class LockFreeMetric {
   void Update(D value) { locals_.try_emplace().first.Update(std::move(value)); }
 
   std::vector<C> Collect() {
+    absl::MutexLock mutex(&collect_lock_);
     auto pruned = locals_.PruneAndList();
     std::vector<C> result;
     result.reserve(pruned.current.size() + pruned.abandoned.size());
-    for (auto& i : pruned.current) {
+    for (Local* i : pruned.current) {
       result.push_back(i->Collect());
     }
     for (auto& i : pruned.abandoned) {
@@ -190,6 +191,7 @@ class LockFreeMetric {
  private:
   using Local = LocalLockFreeMetric<C, D>;
 
+  absl::Mutex collect_lock_;
   ThreadLocalDelayed<Local> locals_;
 };
 

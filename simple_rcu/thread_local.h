@@ -28,6 +28,7 @@
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/die_if_null.h"
+#include "absl/synchronization/mutex.h"
 #include "simple_rcu/lock_free_int.h"
 
 namespace simple_rcu {
@@ -141,7 +142,7 @@ class ThreadLocalDelayed {
 
   // See the `Prune` method below.
   struct PruneResult {
-    std::vector<std::shared_ptr<L>> current;
+    std::vector<L *> current;
     std::vector<std::unique_ptr<PerThread>> abandoned;
   };
 
@@ -149,11 +150,15 @@ class ThreadLocalDelayed {
   // They are returned in the result, split into two part:
   //
   // - `current` contains the ones that are still referenced by their
-  //   creator threads. The caller is responsible for any required
-  //   synchronization of these values with respect to their creator threads.
+  //   creator threads. These references are valid only until another call to
+  //   `PruneAndList`, or until this central object is destroyed. The caller is
+  //   responsible for any required synchronization of these values with
+  //   respect to their creator threads.
   // - `abandoned` contains the ones whose respective thread has finished and
   //   therefore their ownership is handed over to the caller to destroy (or
   //   otherwise utilize) them.
+  //
+  // None of the returned pointers are `nullptr`.
   PruneResult PruneAndList() {
     PruneResult result;
     absl::MutexLock mutex(&shared_->per_thread_lock);
@@ -169,10 +174,10 @@ class ThreadLocalDelayed {
     result.abandoned.insert(result.abandoned.end(), std::make_move_iterator(it),
                             std::make_move_iterator(per_thread.end()));
     per_thread.erase(it, per_thread.end());
-    // Copy pointers to the remaining ones.
+    // Copy pointers to the kept instances.
     result.current.reserve(per_thread.size());
     for (const auto &r : per_thread) {
-      result.current.push_back(std::shared_ptr<L>(shared_, &r->value));
+      result.current.push_back(&r->value);
     }
     return result;
   }
