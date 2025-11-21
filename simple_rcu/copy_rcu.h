@@ -202,7 +202,7 @@ class CopyRcu {
  private:
   T UpdateLocked(typename std::remove_const<T>::type value)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
-    for (std::shared_ptr<View> &view : views_.Prune()) {
+    for (std::shared_ptr<View> &view : views_.PruneAndList()) {
       Local3StateRcu<MutableT> &local_rcu = view->local_rcu_;
       local_rcu.Update() = value;
       local_rcu.ForceUpdate();

@@ -45,8 +45,6 @@ class InternalPerThreadBase {
     }
   };
 
-  std::atomic<AtomicBool> abandoned_;
-
   InternalPerThreadBase() : abandoned_(false) {}
   ~InternalPerThreadBase() = default;
 
@@ -71,6 +69,8 @@ class InternalPerThreadBase {
   // owned by the global key.
   static absl::flat_hash_map<std::shared_ptr<void>, std::shared_ptr<void>>
       &OwnedMap();
+
+  std::atomic<AtomicBool> abandoned_;
 
   template <typename L, typename S>
   friend class ThreadLocalDelayed;
@@ -152,7 +152,7 @@ class ThreadLocalDelayed {
   // - `abandoned` contains the ones whose respective thread has finished and
   //   therefore their ownership is handed over to the caller to destroy (or
   //   otherwise utilize) them.
-  PruneResult Prune() {
+  PruneResult PruneAndList() {
     PruneResult result;
     absl::MutexLock mutex(&shared_->per_thread_lock);
     std::vector<std::unique_ptr<PerThread>> &per_thread = shared_->per_thread;
@@ -225,8 +225,11 @@ class ThreadLocalWeak {
     }
   }
 
-  std::vector<std::shared_ptr<L>> Prune() { return locals_.Prune(); }
-  // TODO: Document
+  // Removes this thread's local `L` value. If it's not held by a
+  // `shared_ptr<L>` returned by `PruneAndList`, it's destroyed immediately. In
+  // either case, the original reference returned by `try_emplace` becomes
+  // invalid. A new call to `try_emplace` will create and register a new,
+  // different one.
   void erase() {
     auto &map = InternalPerThreadBase::OwnedMap();
     auto it = map.find(shared_);
@@ -235,7 +238,14 @@ class ThreadLocalWeak {
     }
   }
 
-  // TODO: Document
+  // Cleans up all expired `weak-ptr`s from an internal bookkeeping list.
+  // The ones that are still referenced are `weak_ptr::lock()`-ed and returned.
+  std::vector<std::shared_ptr<L>> PruneAndList() {
+    return locals_.PruneAndList();
+  }
+
+  // Cleans up all expired `weak-ptr`s from an internal bookkeeping list.
+  void PruneOnly() { return locals_.PruneOnly(); }
 
  private:
   using PerThread = L;
@@ -248,33 +258,35 @@ class ThreadLocalWeak {
       per_thread_.emplace_back(ptr);
     }
 
-    std::vector<std::shared_ptr<L>> Prune()
+    std::vector<std::shared_ptr<L>> PruneAndList()
         ABSL_LOCKS_EXCLUDED(per_thread_lock_) {
-      std::vector<std::shared_ptr<L>> result;
       absl::MutexLock mutex(&per_thread_lock_);
+      PruneInternal();
+      std::vector<std::shared_ptr<L>> result;
       result.reserve(per_thread_.size());
-      for (std::weak_ptr<PerThread> &weak : per_thread_) {
-        if (std::shared_ptr<PerThread> shared = weak.lock();
-            shared != nullptr) {
-          result.push_back(std::move(shared));
+      for (std::weak_ptr<PerThread> ptr : per_thread_) {
+        if (std::shared_ptr<PerThread> locked = ptr.lock(); locked != nullptr) {
+          result.push_back(std::move(locked));
         }
       }
-      PruneOnlyInternal();
       return result;
     }
 
+    void PruneOnly() ABSL_LOCKS_EXCLUDED(per_thread_lock_) {
+      absl::MutexLock mutex(&per_thread_lock_);
+      PruneInternal();
+    }
+
    private:
-    void PruneOnlyInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(per_thread_lock_) {
+    void PruneInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(per_thread_lock_) {
       // Shrink-to-fit before removals as a small optimization - possibly the
       // roughly same number of new entries will be added until the next call.
       per_thread_.shrink_to_fit();
       per_thread_.erase(std::remove_if(per_thread_.begin(), per_thread_.end(),
                                        [](auto &ptr) { return ptr.expired(); }),
                         per_thread_.end());
-      return per_thread_;
     }
 
-   private:
     absl::Mutex per_thread_lock_;
     std::vector<std::weak_ptr<PerThread>> per_thread_
         ABSL_GUARDED_BY(per_thread_lock_);

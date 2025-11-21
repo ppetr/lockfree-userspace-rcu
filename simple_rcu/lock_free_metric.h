@@ -175,7 +175,7 @@ class LockFreeMetric {
   void Update(D value) { locals_.try_emplace().first.Update(std::move(value)); }
 
   std::vector<C> Collect() {
-    auto pruned = locals_.Prune();
+    auto pruned = locals_.PruneAndList();
     std::vector<C> result;
     result.reserve(pruned.current.size() + pruned.abandoned.size());
     for (auto& i : pruned.current) {
