@@ -198,7 +198,12 @@ class ThreadLocalDelayed {
 template <typename L>
 class ThreadLocalWeak {
  public:
-  ThreadLocalWeak() : shared_(std::make_shared<std::monostate>()) {}
+  ThreadLocalWeak() : ThreadLocalWeak(nullptr) {}
+  // `shared` will be kept alive as long as there are any thread-local
+  // instances bound to this object.
+  explicit ThreadLocalWeak(std::shared_ptr<void> shared)
+      : shared_((shared != nullptr) ? std::move(shared)
+                                    : std::make_shared<std::monostate>()) {}
   ~ThreadLocalWeak() = default;
 
   // Retrieves a thread-local instance bound to `shared`.
@@ -294,7 +299,7 @@ class ThreadLocalWeak {
   };
 
   // Never nullptr (unless moved out).
-  std::shared_ptr<std::monostate> shared_;
+  std::shared_ptr<void> shared_;
   LocalsList locals_;
 };
 
