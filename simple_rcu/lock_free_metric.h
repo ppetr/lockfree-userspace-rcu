@@ -76,13 +76,13 @@ class LocalLockFreeMetric {
     if (exchanged) {
       // The previous value was at `update_index_ - 1`, which has now been seen
       // by the collecting side.
-      ABSL_CHECK(next.empty());
+      ABSL_DCHECK(next.empty());
       next.Reset(update_index_);
     } else if (auto advance = last_start - next.start(); advance > 0) {
-      ABSL_CHECK_EQ(advance, next.size() - 1);
+      ABSL_DCHECK_EQ(advance, next.size() - 1);
       next.KeepJustLast();
     }
-    ABSL_CHECK_EQ(next.end(), update_index_) << "next.end = " << next.end();
+    ABSL_DCHECK_EQ(next.end(), update_index_) << "next.end = " << next.end();
     update_index_++;
     next.Append(std::move(value));
   }
@@ -100,7 +100,7 @@ class LocalLockFreeMetric {
       return C{};  // Unreachable.
     } else if (seen < next.size()) {
       if (seen > 0) {
-        ABSL_CHECK_EQ(seen, next.size() - 1)
+        ABSL_DCHECK_EQ(seen, next.size() - 1)
             << "next.start = " << next.start()
             << ", next.size() = " << next.size()
             << ", collect_index_ = " << collect_index_;
@@ -110,7 +110,7 @@ class LocalLockFreeMetric {
       collect_index_ += next.size();
       return next.CollectAndReset();
     } else {
-      ABSL_CHECK(next.empty());
+      ABSL_DCHECK(next.empty());
       next.Reset(collect_index_);
       return C{};
     }
