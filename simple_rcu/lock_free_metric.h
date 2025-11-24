@@ -44,6 +44,8 @@ namespace simple_rcu {
 // separate copies of `C`. And some of these calls can be delayed to the next
 // `Collect()` call (this is why it should be thread-compatible).
 //
+// Examples:
+//
 // Notably the above requirements are satisfied by all numerical types. Which
 // allows them to be accumulated lock-free regardless of their
 // `std::atomic<C>::is_always_lock_free`.
@@ -55,6 +57,10 @@ namespace simple_rcu {
 // A plain gauge that tracks just the lastest value can be implemented by
 //
 //     C& operator+=(D value) { *this = std::move(value); }
+//
+// Finally, any class and operations on can be wrapped as a metric by setting
+// `D = std::function<void(C&)>`, see `AnyFunctor` example in
+// `lock_free_metric_test.cc`.
 template <typename C, typename D = C>
 class LocalLockFreeMetric {
  public:

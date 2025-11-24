@@ -34,6 +34,7 @@ namespace {
 
 using ::testing::ElementsAre;
 using ::testing::Eq;
+using ::testing::Field;
 using ::testing::IsEmpty;
 using ::testing::Optional;
 
@@ -59,9 +60,16 @@ struct BackCollection {
   C collection;
 };
 
+// Wraps `C` to be acted upon by an arbitrary functor using
+// `operator+=`. This allows metric-like collection of changes on
+// any default-constructed `C` objects such as:
+//
+//   LockFreeMetric<AnyFunctor<C>, std::function<void(C&)>>
+//
+// See test `ArbitraryFunctor` below.
 template <typename C>
 struct AnyFunctor {
-  using value_type = std::function<void(C&)>;
+  using diff_type = std::function<void(C&)>;
 
   template <typename F>
   AnyFunctor& operator+=(F&& f) {
@@ -130,7 +138,7 @@ TEST(LocalLockFreeMetricTest, TwoThreads) {
   }
 }
 
-TEST(LockFreeMetricTest, ChangeSeenImmediately) {
+TEST(LockFreeMetricTest, ChangeSeenInOnlyInTheRightMetric) {
   LockFreeMetric<int_least32_t> metric;
   LockFreeMetric<int_least32_t> other;
   EXPECT_THAT(metric.Collect(), IsEmpty());
@@ -146,6 +154,15 @@ TEST(LockFreeMetricTest, ChangeSeenImmediately) {
   EXPECT_THAT(metric.Collect(), ElementsAre(5));
   EXPECT_THAT(metric.Collect(), ElementsAre(0));
   EXPECT_THAT(other.Collect(), IsEmpty());
+}
+
+TEST(LockFreeMetricTest, ArbitraryFunctor) {
+  using StringF = AnyFunctor<std::string>;
+  LockFreeMetric<StringF, StringF::diff_type> metric;
+  metric.Update([](std::string& s) { s.append("abc"); });
+  metric.Update([](std::string& s) { s.insert(0, "xyz-"); });
+  EXPECT_THAT(metric.Collect(),
+              ElementsAre(Field(&StringF::value, Eq("xyz-abc"))));
 }
 
 }  // namespace
