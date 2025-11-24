@@ -23,6 +23,7 @@
 #include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/absl_log.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
@@ -43,118 +44,46 @@ class CopyRcu {
  public:
   using MutableT = typename std::remove_const<T>::type;
 
-  static_assert(std::is_copy_constructible<MutableT>::value &&
-                    std::is_copy_assignable<MutableT>::value,
-                "T must be copy constructible and assignable");
-
-  class View;
-
-  template <typename U = T>
-  class SnapshotDeleter {
-   public:
-    SnapshotDeleter(const SnapshotDeleter &) noexcept = default;
-    SnapshotDeleter &operator=(const SnapshotDeleter &) noexcept = default;
-
-    void operator()(U *) { registrar_.snapshot_depth_--; }
-
+  class View {
    private:
-    SnapshotDeleter(View &registrar) noexcept : registrar_(registrar) {}
-
-    View &registrar_;
-
-    friend class View;
-  };
-
-  // Holds a read reference to a RCU value for the current thread.
-  // The reference is guaranteed to be stable during the lifetime of `Snapshot`.
-  // Callers are expected to limit the lifetime of `Snapshot` to as short as
-  // possible.
-  // WARNING: Bad things will happen if you use `reset` on a `Snapshot`.
-  // Thread-compatible (but not thread-safe), reentrant.
-  using Snapshot = std::unique_ptr<T, SnapshotDeleter<>>;
-
-  // Interface to the RCU local to a particular reader thread.
-  // Construction and destruction are thread-safe operations, but the `Read()`
-  // (and `ReadPtr()`) methods are only thread-compatible. Callers are expected
-  // to construct a separate `View` instance for each reader thread.
-  class View final {
-   private:
-    struct PrivateConstructed {};
+    struct PrivateConstruction final {};
 
    public:
-    // Thread-safe. Argument `rcu` must outlive this instance.
-    // Acquires a mutex to register in `rcu`, therefore it'll block waiting on
-    // the mutex if a concurrent call to `Update` is running.
-    View(PrivateConstructed, CopyRcu &rcu)
-        : snapshot_depth_(0), local_rcu_(rcu.Current()) {}
+    explicit View(CopyRcu &rcu, PrivateConstruction = {})
+        : local_(rcu.Current()) {}
 
-    // Obtains a read snapshot to the current value held by the RCU.
-    // Never returns `nullptr`.
-    // This is a very fast, lock-free and atomic operation.
-    // Thread-compatible, but not thread-safe.
+    // Retrieves the most recent value and returns a reference to it. It allows
+    // efficient access to the value in case `T` isn't cheaply copyable.
+    // In addition, the second returned value signals whether this value is
+    // observed the first time by the current thread.
     //
-    // Reentrancy: Each call to `Read()` increments an internal reference
-    // counter, which is decremented by releasing a `Snapshot`. Only when the
-    // counter is being incremented from 0 a fresh value is obtained from the
-    // RCU. Subsequent nested calls to `Read()` return the same value. This
-    // mechanism ensures that the value of a `Snapshot` is not changed by such
-    // nested calls.
-    //
-    // WARNING: Do not use `reset` or `release` on the returned `unique_ptr`.
-    // Doing so is likely to lead to undefined behavior.
-    inline Snapshot Read() noexcept {
-      if (snapshot_depth_++ == 0) {
-        local_rcu_.TryRead();
-      }
-      return Snapshot(&local_rcu_.Read(), SnapshotDeleter<>(*this));
-    }
-
-    // In case `T` is a `std::shared_ptr`, `ReadPtr` provides convenient access
-    // directly to the pointer's target.
-    //
-    // Note that when using `ReadPtr` the `shared_ptr` is never destroyed by
-    // the calling thread, thus avoiding any performance penalty related to its
-    // internal reference counting or invoking `~T`. Rather the pointer is
-    // destroyed by the updater thread during one of the subsequent `Update`
-    // passes.
-    template <typename U = T, typename E = typename U::element_type>
-    std::unique_ptr<E, SnapshotDeleter<E>> inline ReadPtr() noexcept {
-      Snapshot snapshot = Read();
-      if (*snapshot == nullptr) {
-        // For a `nullptr` there is no value to keep. Therefore we can just let
-        // `snapshot` get deleted and create a `nullptr`, which won't invoke
-        // its deleter.
-        return {nullptr, SnapshotDeleter<E>(*this)};
-      } else {
-        return {snapshot.release()->get(), SnapshotDeleter<E>(*this)};
-      }
+    // The reference is thread-local, and is valid only until another call to
+    // any of the `Snapshot`... methods by the current thread.
+    inline std::pair<T &, bool> SnapshotRef() noexcept {
+      bool is_new = local_.TryRead();
+      return {local_.Read(), is_new};
     }
 
    private:
-    // Holds a `Local3StateRcu<MutableT>` and maintains its registration in
-    // `CopyRcu`.
-
-    // Incremented with each `Snapshot` instance. Ensures that `TryRead` is
-    // invoked only for the outermost `Snapshot`, keeping its value unchanged
-    // for its whole lifetime.
-    int_fast16_t snapshot_depth_;
-    Local3StateRcu<MutableT> local_rcu_;
+    Local3StateRcu<MutableT> local_;
 
     friend class CopyRcu;
   };
+
+  static_assert(std::is_copy_constructible<MutableT>::value &&
+                    std::is_copy_assignable<MutableT>::value,
+                "T must be copy constructible and assignable");
 
   // Constructs a RCU with an initial value `T()`.
   CopyRcu() : CopyRcu(T()) {}
   explicit CopyRcu(T initial_value)
       : lock_(), current_(std::move(initial_value)), views_() {}
 
-  // Updates `value` in all registered `View` threads.
-  // Returns the previous value. Note that the previous value can still be
-  // observed by readers that haven't obtained a fresh `Snapshot` instance yet.
-  //
-  // Thread-safe. This method isn't tied in any particular way to a `View`
-  // instance corresponding to the current thread, and can be called also by
-  // threads that have no `View` instance at all.
+  // Updates the current `value`.  Returns the previous value.
+
+  // Thread-safe. This method isn't tied in any particular way to an instance
+  // corresponding to the current thread, and can be called also by threads
+  // that have no thread-local instance at all.
   T Update(typename std::remove_const<T>::type value)
       ABSL_LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
@@ -173,39 +102,31 @@ class CopyRcu {
     return absl::nullopt;
   }
 
+  // Fetches a copy of the latest value.
+  // Thread-safe.
+  inline T Snapshot() noexcept { return ThreadLocalView().SnapshotRef().first; }
+
+  // Retrieves the thread-local `View` for the current thread.
+  // This allows somewhat lower-level access than `Snapshot`, in particular to
+  // call `View::SnapshotRef`, and by keeping the `View&` reference, some
+  // (tiny) performance penalty related to fetching this thread-local `View&`
+  // instance.
+  //
+  // Thread-safe.
+  // The returned reference is valid only for the current thread.
   inline View &ThreadLocalView() noexcept {
     return views_
-        .try_emplace(typename View::PrivateConstructed{}, std::ref(*this))
+        .try_emplace(std::ref(*this), typename View::PrivateConstruction())
         .first;
-  }
-
-  // A variant of `View::Read()` that automatically maintains a `thread_local`
-  // instance of `View` bound to `this`.
-  //
-  // This makes this function easier to use compared to an explicit management
-  // of `View`, at the cost of some small inherent performance overhead of
-  // `thread_local`.
-  inline Snapshot Read() noexcept { return ThreadLocalView().Read(); }
-
-  // A variant of `View::ReadPtr()` that automatically maintains a
-  // `thread_local` instance of `View` bound to `this`.
-  //
-  // This makes this function easier to use compared to an explicit management
-  // of `View`, at the cost of some inherent performance overhead of
-  // `thread_local`.
-  template <typename U = T, typename E = typename U::element_type>
-  inline std::unique_ptr<E, typename CopyRcu<U>::template SnapshotDeleter<E>>
-  ReadPtr() noexcept {
-    return ThreadLocalView().ReadPtr();
   }
 
  private:
   T UpdateLocked(typename std::remove_const<T>::type value)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
-    for (std::shared_ptr<View> &view : views_.PruneAndList()) {
-      Local3StateRcu<MutableT> &local_rcu = view->local_rcu_;
-      local_rcu.Update() = value;
-      local_rcu.ForceUpdate();
+    for (std::shared_ptr<View> &ptr : views_.PruneAndList()) {
+      Local3StateRcu<MutableT> &local = ptr->local_;
+      local.Update() = value;
+      local.ForceUpdate();
     }
     std::swap(current_, value);
     return value;
@@ -225,11 +146,7 @@ class CopyRcu {
 // with the common API
 //
 // - `Update` receives a pointer (`shared_ptr` or by conversion `unique_ptr`)
-//   and shares it among all the `CopyRcu::View` receivers.
-// - `ReadPtr` obtains a locally-scoped snapshot of `const T`.
-//
-// Note that no memory (de)allocation happens in the reader threads that invoke
-// `ReadPtr` (or `Read`). This is done exclusively by the updater thread.
+//   and shares it among all the thread-local receivers.
 template <typename T>
 using Rcu = CopyRcu<std::shared_ptr<typename std::add_const<T>::type>>;
 

@@ -23,78 +23,63 @@
 namespace simple_rcu {
 namespace {
 
+using ::testing::Eq;
+using ::testing::Pair;
 using ::testing::Pointee;
 
-TEST(CopyRcuTest, UpdateAndRead) {
+TEST(CopyRcuTest, UpdateAndSnapshot) {
   CopyRcu<int> rcu;
-  CopyRcu<int>::View& local = rcu.ThreadLocalView();
+  rcu.Snapshot();
   rcu.Update(42);
-  EXPECT_THAT(local.Read(), Pointee(42))
-      << "Thread registered prior Update must receive the value";
+  EXPECT_THAT(rcu.Snapshot(), Eq(42))
+      << "Thread registered prior Update should receive the value";
 }
 
-TEST(CopyRcuTest, UpdateAndReadAfter) {
+TEST(CopyRcuTest, UpdateAndSnapshotRef) {
   CopyRcu<int> rcu;
+  rcu.Snapshot();
   rcu.Update(42);
-  CopyRcu<int>::View& local = rcu.ThreadLocalView();
-  EXPECT_THAT(local.Read(), Pointee(42))
-      << "Thread registered after Update must also receive the value";
+  CopyRcu<int>::View& view = rcu.ThreadLocalView();
+  EXPECT_THAT(view.SnapshotRef(), Pair(Eq(42), true))
+      << "Should receive a reference with the correct value marked as new";
+  EXPECT_THAT(view.SnapshotRef(), Pair(Eq(42), false))
+      << "Should receive a reference with the correct value marked as old";
+  EXPECT_THAT(view.SnapshotRef(), Pair(Eq(42), false))
+      << "Should receive a reference with the correct value marked as old";
 }
 
-TEST(CopyRcuTest, UpdateAndReadConstRef) {
+TEST(CopyRcuTest, UpdateAndSnapshotAfter) {
+  CopyRcu<int> rcu;
+  rcu.Update(42);
+  EXPECT_THAT(rcu.Snapshot(), Eq(42))
+      << "Thread registered after Update should also receive the value";
+}
+
+TEST(CopyRcuTest, UpdateAndSnapshotConstRef) {
   // Also tests that it works with a type that is not default-constructible.
   const int old_value = 0;
   CopyRcu<const std::reference_wrapper<const int>> rcu(old_value);
-  CopyRcu<const std::reference_wrapper<const int>>::View& local =
-      rcu.ThreadLocalView();
-  EXPECT_THAT(local.Read(), Pointee(0));
+  EXPECT_THAT(rcu.Snapshot(), Eq(0));
   const int value = 42;
   rcu.Update(value);
-  EXPECT_THAT(local.Read(), Pointee(42));
+  EXPECT_THAT(rcu.Snapshot(), Eq(42));
 }
 
 TEST(CopyRcuTest, UpdateIf) {
   CopyRcu<int> rcu(0);
-  CopyRcu<int>::View& local = rcu.ThreadLocalView();
   rcu.UpdateIf(42, [](int previous) { return previous != 0; });
-  EXPECT_THAT(local.Read(), Pointee(0))
-      << "Must not update a value that doesn't match the predicate";
+  EXPECT_THAT(rcu.Snapshot(), Eq(0))
+      << "Should not update a value that doesn't match the predicate";
   rcu.UpdateIf(42, [](const int& previous) { return previous == 0; });
-  EXPECT_THAT(local.Read(), Pointee(42))
-      << "Must update a value that matches the predicate";
+  EXPECT_THAT(rcu.Snapshot(), Eq(42))
+      << "Should update a value that matches the predicate";
 }
 
-TEST(CopyRcuTest, ReadRemainsStable) {
-  CopyRcu<int> rcu(42);
-  CopyRcu<int>::View& local = rcu.ThreadLocalView();
-  auto read_ref1 = local.Read();
-  rcu.Update(73);
-  EXPECT_THAT(read_ref1, Pointee(42))
-      << "The first reference must hold its value past Update()";
-  auto read_ref2 = local.Read();
-  EXPECT_THAT(read_ref1, Pointee(42))
-      << "The first reference must hold its value past a nested Read()";
-  EXPECT_THAT(read_ref2, Pointee(42))
-      << "A nested Read() must hold the same value as an outer one";
-  EXPECT_EQ(read_ref1.get(), read_ref2.get())
-      << "A nested Read() must point to the same value as an outer one";
-}
-
-TEST(RcuTest, UpdateAndReadPtr) {
+TEST(RcuTest, UpdateAndSnapshotPtr) {
   Rcu<int> rcu;
-  Rcu<int>::View& local = rcu.ThreadLocalView();
-  EXPECT_EQ(local.ReadPtr(), nullptr);
+  EXPECT_EQ(rcu.Snapshot(), nullptr);
   rcu.Update(std::make_shared<int>(42));
-  EXPECT_THAT(local.ReadPtr(), Pointee(42));
-}
-
-TEST(CopyRcuTest, ThreadLocalUpdateAndRead) {
-  {
-    Rcu<int> rcu;
-    EXPECT_EQ(*rcu.Read(), nullptr);
-    rcu.Update(std::make_shared<int>(42));
-    EXPECT_THAT(rcu.Read(), Pointee(Pointee(42)));
-  }
+  EXPECT_THAT(rcu.Snapshot(), Pointee(42));
 }
 
 }  // namespace

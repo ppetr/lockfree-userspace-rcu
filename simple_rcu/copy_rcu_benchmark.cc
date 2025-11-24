@@ -75,7 +75,7 @@ static void BM_Reads(benchmark::State& state) {
   }
   CopyRcu<int_fast32_t>::View& reader = context->rcu.ThreadLocalView();
   for (auto _ : state) {
-    auto read = *reader.Read();
+    auto& read = reader.SnapshotRef().first;
     benchmark::DoNotOptimize(read);
     benchmark::ClobberMemory();
   }
@@ -102,7 +102,7 @@ static void BM_ReadsThreadLocal(benchmark::State& state) {
     }
   }
   for (auto _ : state) {
-    auto read = context->rcu.Read();
+    auto read = context->rcu.Snapshot();
     benchmark::DoNotOptimize(read);
     benchmark::ClobberMemory();
   }
@@ -131,7 +131,7 @@ static void BM_ReadSharedPtrs(benchmark::State& state) {
   }
   Rcu<int_fast32_t>::View& local = context->rcu.ThreadLocalView();
   for (auto _ : state) {
-    auto read = *local.ReadPtr();
+    auto& read = local.SnapshotRef().first;
     benchmark::DoNotOptimize(read);
     benchmark::ClobberMemory();
   }
@@ -152,16 +152,13 @@ static void BM_ReadSharedPtrsThreadLocal(benchmark::State& state) {
       context->threads.emplace_back([&]() {
         int_fast32_t updates = 0;
         while (!context->finished.load()) {
-          auto previous = *context->rcu.Update(
-              std::make_shared<const int_fast32_t>(updates++));
-          benchmark::DoNotOptimize(previous);
-          benchmark::ClobberMemory();
+          context->rcu.Update(std::make_shared<const int_fast32_t>(updates++));
         }
       });
     }
   }
   for (auto _ : state) {
-    auto read = *context->rcu.ReadPtr();
+    auto read = *context->rcu.Snapshot();
     benchmark::DoNotOptimize(read);
     benchmark::ClobberMemory();
   }
@@ -180,9 +177,9 @@ static void BM_Updates(benchmark::State& state) {
   if (state.thread_index() == 0) {
     for (int i = 0; i < state.range(0); i++) {
       context->threads.emplace_back([&]() {
-        CopyRcu<int_fast32_t>::View& local = context->rcu.ThreadLocalView();
+        CopyRcu<int_fast32_t>& rcu = context->rcu;
         while (!context->finished.load()) {
-          auto read = *local.Read();
+          auto read = rcu.Snapshot();
           benchmark::DoNotOptimize(read);
           benchmark::ClobberMemory();
         }
