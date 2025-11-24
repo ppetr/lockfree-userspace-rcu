@@ -125,9 +125,10 @@ class LocalLockFreeMetric {
 
     inline void Append(D value) {
       if (last_.has_value()) {
-        collected_ += *std::move(last_);
+        collected_ += std::exchange(*last_, std::move(value));
+      } else {
+        last_ = std::move(value);
       }
-      last_ = std::move(value);
       end_++;
     }
 
