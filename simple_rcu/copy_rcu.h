@@ -1,4 +1,4 @@
-// Copyright 2022-2023 Google LLC
+// Copyright 2022-2025 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ class CopyRcu {
  public:
   using MutableT = typename std::remove_const<T>::type;
 
+  // Provides a thread-local view of a `CopyRcu`
   class View {
    private:
     struct PrivateConstruction final {};
@@ -55,10 +56,11 @@ class CopyRcu {
     // Retrieves the most recent value and returns a reference to it. It allows
     // efficient access to the value in case `T` isn't cheaply copyable.
     // In addition, the second returned value signals whether this value is
-    // observed the first time by the current thread.
+    // new (observed the first time by the current thread).
     //
-    // The reference is thread-local, and is valid only until another call to
-    // any of the `Snapshot`... methods by the current thread.
+    // The returned reference is thread-local, valid only for the current
+    // thread, and only until another call to any of the `Snapshot`... methods
+    // by the current thread.
     inline std::pair<T &, bool> SnapshotRef() noexcept {
       bool is_new = local_.TryRead();
       return {local_.Read(), is_new};
@@ -80,7 +82,7 @@ class CopyRcu {
       : lock_(), current_(std::move(initial_value)), views_() {}
 
   // Updates the current `value`.  Returns the previous value.
-
+  //
   // Thread-safe. This method isn't tied in any particular way to an instance
   // corresponding to the current thread, and can be called also by threads
   // that have no thread-local instance at all.
