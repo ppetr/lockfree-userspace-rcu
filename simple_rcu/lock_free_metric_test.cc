@@ -16,8 +16,10 @@
 
 #include <cstdint>
 #include <deque>
+#include <functional>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <thread>
 
 #include "absl/random/random.h"
@@ -57,6 +59,19 @@ struct BackCollection {
   C collection;
 };
 
+template <typename C>
+struct AnyFunctor {
+  using value_type = std::function<void(C&)>;
+
+  template <typename F>
+  AnyFunctor& operator+=(F&& f) {
+    std::forward<F>(f)(value);
+    return *this;
+  }
+
+  C value;
+};
+
 template <typename T>
 void AppendTo(std::deque<T>&& input, std::deque<T>& target) {
   target.insert(target.end(), std::make_move_iterator(input.begin()),
@@ -77,16 +92,15 @@ TEST(LocalLockFreeMetricTest, ChangeSeenImmediatelyInt) {
 }
 
 TEST(LocalLockFreeMetricTest, ChangeSeenImmediately) {
-  LocalLockFreeMetric<BackCollection<std::deque<int_least32_t>>, int_least32_t>
-      metric;
+  LocalLockFreeMetric<BackCollection<std::string>, char> metric;
   EXPECT_THAT(metric.Collect().collection, IsEmpty());
-  metric.Update(1);
-  EXPECT_THAT(metric.Collect().collection, ElementsAre(1));
+  metric.Update('a');
+  EXPECT_THAT(metric.Collect().collection, Eq("a"));
   EXPECT_THAT(metric.Collect().collection, IsEmpty());
   // Another round.
-  metric.Update(2);
-  metric.Update(3);
-  EXPECT_THAT(metric.Collect().collection, ElementsAre(2, 3));
+  metric.Update('x');
+  metric.Update('y');
+  EXPECT_THAT(metric.Collect().collection, Eq("xy"));
   EXPECT_THAT(metric.Collect().collection, IsEmpty());
 }
 
@@ -112,7 +126,7 @@ TEST(LocalLockFreeMetricTest, TwoThreads) {
   AppendTo(metric.Collect().collection, result);
   ASSERT_EQ(result.size(), kCount);
   for (int_least32_t i = 0; i < kCount; i++) {
-    ASSERT_EQ(i, result[i]);
+    ASSERT_EQ(i, result[i]) << "at index " << i;
   }
 }
 
