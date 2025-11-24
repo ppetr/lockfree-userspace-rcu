@@ -40,7 +40,7 @@ class InternalPerThreadBase {
       std::conditional<std::is_void_v<AtomicSignedLockFree>, bool,
                        AtomicSignedLockFree>::type>::type;
 
-  struct MarkAbandoned {
+  struct MarkAbandoned final {
     void operator()(InternalPerThreadBase *b) {
       b->abandoned_.store(true, std::memory_order_release);
     }
@@ -49,7 +49,7 @@ class InternalPerThreadBase {
   InternalPerThreadBase() : abandoned_(false) {}
   ~InternalPerThreadBase() = default;
 
-  bool abandoned() { return abandoned_.load(std::memory_order_acquire); }
+  inline bool abandoned() { return abandoned_.load(std::memory_order_acquire); }
 
   // Using `static thread_local` instances in the .cc module in the functions
   // below is much more performant then having them templated in the .h file.
@@ -94,7 +94,7 @@ class InternalPerThreadBase {
 template <typename L>
 class ThreadLocalDelayed {
  public:
-  struct PerThread : public InternalPerThreadBase {
+  struct PerThread final : public InternalPerThreadBase {
    public:
     L value;
 
@@ -135,7 +135,7 @@ class ThreadLocalDelayed {
   }
 
   // See the `Prune` method below.
-  struct PruneResult {
+  struct PruneResult final {
     std::vector<L *> current;
     std::vector<std::unique_ptr<PerThread>> abandoned;
   };
@@ -177,7 +177,7 @@ class ThreadLocalDelayed {
   }
 
  private:
-  struct Shared {
+  struct Shared final {
     absl::Mutex per_thread_lock;
     std::vector<std::unique_ptr<PerThread>> per_thread
         ABSL_GUARDED_BY(per_thread_lock);
@@ -256,7 +256,7 @@ class ThreadLocalWeak {
  private:
   using PerThread = L;
 
-  class LocalsList {
+  class LocalsList final {
    public:
     void Add(std::weak_ptr<PerThread> ptr)
         ABSL_LOCKS_EXCLUDED(per_thread_lock_) {

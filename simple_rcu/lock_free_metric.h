@@ -117,7 +117,7 @@ class LocalLockFreeMetric {
   }
 
  private:
-  class Slice {
+  class Slice final {
    public:
     inline int_fast32_t start() const { return start_; }
     inline int_fast32_t end() const { return end_; }
@@ -172,7 +172,9 @@ class LockFreeMetric {
  public:
   LockFreeMetric() = default;
 
-  void Update(D value) { locals_.try_emplace().first.Update(std::move(value)); }
+  inline void Update(D value) {
+    locals_.try_emplace().first.Update(std::move(value));
+  }
 
   std::vector<C> Collect() {
     absl::MutexLock mutex(&collect_lock_);
