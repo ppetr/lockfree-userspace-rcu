@@ -148,7 +148,8 @@ class CopyRcu {
 // with the common API
 //
 // - `Update` receives a pointer (`shared_ptr` or by conversion `unique_ptr`)
-//   and shares it among all the thread-local receivers.
+//   and shares it among all the (internally thread-local) receivers.
+// - `Snapshot` returns the latest `shared_ptr` to any calling thread.
 template <typename T>
 using Rcu = CopyRcu<std::shared_ptr<typename std::add_const<T>::type>>;
 
