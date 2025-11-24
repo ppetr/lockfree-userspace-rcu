@@ -66,24 +66,23 @@ class LocalLockFreeMetric {
                 "`D` must be a copyable type");
 
   inline void Update(D value) {
-    int_fast32_t last_start;
+    int_fast32_t last_start, last_end;
     {
       Slice& prev = exchange_.Left();
       prev.Append(value);
       last_start = prev.start();
+      last_end = prev.end();
     }
     const auto [next, exchanged] = exchange_.PassLeft();
     if (exchanged) {
-      // The previous value was at `update_index_ - 1`, which has now been seen
-      // by the collecting side.
       ABSL_DCHECK(next.empty());
-      next.Reset(update_index_);
+      // The previous value was at `last_end - 1`, which has now been seen by
+      // the collecting side.
+      next.Reset(last_end - 1);
     } else if (auto advance = last_start - next.start(); advance > 0) {
       ABSL_DCHECK_EQ(advance, next.size() - 1);
       next.KeepJustLast();
     }
-    ABSL_DCHECK_EQ(next.end(), update_index_) << "next.end = " << next.end();
-    update_index_++;
     next.Append(std::move(value));
   }
 
@@ -162,7 +161,6 @@ class LocalLockFreeMetric {
     std::optional<D> last_;
   };
 
-  int_fast32_t update_index_ = 0;
   int_fast32_t collect_index_ = 0;
   Local3StateExchange<Slice> exchange_;
 };
