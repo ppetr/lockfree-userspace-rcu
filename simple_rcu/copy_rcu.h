@@ -113,7 +113,7 @@ class CopyRcu {
   // construct a thread-local channel for it. All subsequent alls are very
   // fast.
   //
-  // Thread-safe, lock-free.
+  // Thread-safe, wait-free.
   inline T Snapshot() noexcept { return ThreadLocalView().SnapshotRef().first; }
 
   // Retrieves the thread-local `View` for the current thread.
@@ -124,7 +124,7 @@ class CopyRcu {
   //
   // The returned reference is valid only for the current thread.
   //
-  // Thread-safe, lock-free.
+  // Thread-safe, wait-free.
   inline View &ThreadLocalView() noexcept {
     return views_
         .try_emplace(std::ref(*this), typename View::PrivateConstruction())

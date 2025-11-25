@@ -32,7 +32,7 @@ namespace simple_rcu {
 
 // Collects atomically values of type `D` from one thread into values of type
 // `C` available in another thread. Each call to `Update` or `Collect` uses
-// just a single atomic, lock-free operation.
+// just a single atomic, wait-free operation.
 //
 // See class `LockFreeMetric` below for details about requirements on `C` and
 // `D`.
@@ -153,7 +153,7 @@ class LocalLockFreeMetric {
 
 // Collects values of type `D` from one thread into values of type `C`
 // available in another thread. Each call to `Update` uses just a single
-// atomic, lock-free operation. (`Collect` is heavier and uses standard
+// atomic, wait-free operation. (`Collect` is heavier and uses standard
 // `absl::Mutex` internally.)
 //
 // `C` must implement a thread-compatible `operator+=(D)` (or a compatible one)

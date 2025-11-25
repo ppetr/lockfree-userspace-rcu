@@ -1,4 +1,4 @@
-# Simple and fast user-space [RCU](Read-Copy-Update)[^1] library
+# Simple and fast user-space [RCU](Read-Copy-Update)[^1] and metric collection library
 
 [RCU]: https://en.wikipedia.org/wiki/Read-copy-update
 
@@ -8,50 +8,50 @@ _*Disclaimer:* This is not an officially supported Google product._
 
 [![Build Status](https://app.travis-ci.com/ppetr/lockfree-userspace-rcu.svg?branch=main)](https://app.travis-ci.com/ppetr/lockfree-userspace-rcu)
 
+This library builds on (possibly) novel concepts that allows critical
+operations (fetching a RCU snapshot, updating a value in a metric) to be
+atomic, lock-free and
+**[wait-free](https://en.wikipedia.org/wiki/Non-blocking_algorithm#Wait-freedom)**
+(assuming that access to a `thread_local` variable can be considered wait-free).
+
 ## Usage
+
+### RCU
 
 ```c++
 #include "simple_rcu/rcu.h"
 
-// Shared object that provides an instance of `MyType`:
-auto rcu = std::make_shared<simple_rcu::Rcu<MyType>>();
+// A central object that distributes instances of `MyType`:
+auto rcu = simple_rcu::Rcu<MyType>();
 
 // Any thread can atomically update the value (can be also a `unique_ptr`,
 // which auto-converts to `shared_ptr`). This is a relatively slow operation
 // (takes a lock internally).
-rcu->Update(std::make_shared<MyType>(...));
+rcu.Update(std::make_shared<MyType>(...));
+
+// Fetch the most recently `Update`d value. This is a wait-free operation.
+// See benchmark `BM_SnapshotSharedPtrThreadLocal` below.
+std::shared_ptr<MyType> ptr = simple_rcu::Snapshot(rcu);
 ```
 
-### Simple
+### Metrics
 
 ```c++
-// Afterwards each reader thread can fetch a const pointer to a snapshot of the
-// instance. This is a lock-free operation.
-// See benchmark `BM_ReadSharedPtrsThreadLocal` below.
-auto ref = simple_rcu::ReadPtr(rcu);
-// `ref` now holds a `unique_ptr` to a stable, thread-local snapshot of
-// `const MyType`.
+#include "simple_rcu/lock_free_metric.h"
+
+// A central object that collects values of a given type.
+simple_rcu::LockFreeMetric<absl::int128> metric;
+
+// Any thread can increment the metric using a very fast, wait-free `Update`
+// operation:
+metric.Update(42);
+metric.Update(73);
+
+// Some other thread can collect the metrics accumulated by all threads that
+// called `Update` before. This also resets the thread-local numbers back to 0.
+std::vector<absl::int128> collected = metric.Collect();
+// `collected` will now contain a single value of 42+73.
 ```
-
-### Advanced
-
-```c++
-// Each reader thread creates a local accessor to `rcu`, which will hold
-// snapshots of `MyType`.
-simple_rcu::Rcu<MyType>::View local(rcu);
-
-// Afterwards the reader thread can repeatedly fetch a const pointer to a
-// snapshot of the instance. This is faster than the simple usage above (see
-// benchmark `BM_Reads` below), since it avoids the internal bookkeeping cost of a
-// `thread_local` variable, at the cost of explicitly maintaining a `View`
-// variable. It effectively involves only a single atomic exchange
-// (https://en.cppreference.com/w/cpp/atomic/atomic/exchange) instruction.
-auto ref = local.ReadPtr();
-// `ref` now holds a `unique_ptr` to a stable, thread-local snapshot of
-// `const MyType`.
-```
-
-See [copy_rcu_test.cc](simple_rcu/copy_rcu_test.cc) for more examples.
 
 ## Dependencies
 
