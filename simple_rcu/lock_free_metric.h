@@ -30,9 +30,9 @@
 
 namespace simple_rcu {
 
-// Collects values of type `D` from one thread into values of type `C` available
-// in another thread using just lock-free operations. Each call to `Update` or
-// `Collect` uses just a single atomic, lock-free operation.
+// Collects atomically values of type `D` from one thread into values of type
+// `C` available in another thread. Each call to `Update` or `Collect` uses
+// just a single atomic, lock-free operation.
 //
 // See class `LockFreeMetric` below for details about requirements on `C` and
 // `D`.
@@ -151,9 +151,10 @@ class LocalLockFreeMetric {
   Local3StateExchange<Slice> exchange_;
 };
 
-// Collects values of type `D` from one thread into values of type `C` available
-// in another thread using just lock-free operations. Each call to `Update` or
-// `Collect` uses just a single atomic, lock-free operation.
+// Collects values of type `D` from one thread into values of type `C`
+// available in another thread. Each call to `Update` uses just a single
+// atomic, lock-free operation. (`Collect` is heavier and uses standard
+// `absl::Mutex` internally.)
 //
 // `C` must implement a thread-compatible `operator+=(D)` (or a compatible one)
 // that will be called to collect values from `Update(D)` until `Collect()` is
@@ -194,6 +195,8 @@ class LockFreeMetric {
   // The first call a thread calls this method might be slower in order to
   // construct a thread-local channel for it. All subsequent alls are very
   // fast.
+  //
+  // Thread-safe, lock-free.
   inline void Update(D value) {
     locals_.try_emplace().first.Update(std::move(value));
   }
@@ -202,6 +205,8 @@ class LockFreeMetric {
   // vector contains the accumulated value for a single thread. The elements
   // are in no particular order. By calling this method, all threads' `C`
   // instances are reset to `C{}`.
+  //
+  // Thread-safe.
   std::vector<C> Collect() {
     absl::MutexLock mutex(&collect_lock_);
     auto pruned = locals_.PruneAndList();

@@ -38,7 +38,8 @@ namespace simple_rcu {
 //
 // `T` must be copyable.
 //
-// Copies of objects of type `T` are distributed to thread-local receivers.
+// As soon as a call to `Update` finishes, any thread that calls `Snapshot`
+// will observe the value.
 template <typename T>
 class CopyRcu {
  public:
@@ -86,6 +87,8 @@ class CopyRcu {
   // Thread-safe. This method isn't tied in any particular way to an instance
   // corresponding to the current thread, and can be called also by threads
   // that have no thread-local instance at all.
+  //
+  // Thread-safe.
   T Update(typename std::remove_const<T>::type value)
       ABSL_LOCKS_EXCLUDED(lock_) {
     absl::MutexLock mutex(&lock_);
@@ -104,8 +107,13 @@ class CopyRcu {
     return absl::nullopt;
   }
 
-  // Fetches a copy of the latest value.
-  // Thread-safe.
+  // Fetches a copy of the latest value passed to `Update`.
+  //
+  // The first call a thread calls this method might be slower in order to
+  // construct a thread-local channel for it. All subsequent alls are very
+  // fast.
+  //
+  // Thread-safe, lock-free.
   inline T Snapshot() noexcept { return ThreadLocalView().SnapshotRef().first; }
 
   // Retrieves the thread-local `View` for the current thread.
@@ -114,8 +122,9 @@ class CopyRcu {
   // (tiny) performance penalty related to fetching this thread-local `View&`
   // instance.
   //
-  // Thread-safe.
   // The returned reference is valid only for the current thread.
+  //
+  // Thread-safe, lock-free.
   inline View &ThreadLocalView() noexcept {
     return views_
         .try_emplace(std::ref(*this), typename View::PrivateConstruction())
