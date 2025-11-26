@@ -30,18 +30,17 @@
 
 namespace simple_rcu {
 
-// Collects atomically values of type `D` from one thread into values of type
-// `C` available in another thread. Each call to `Update` or `Collect` uses
-// just a single atomic, wait-free operation.
-//
-// See class `LockFreeMetric` below for details about requirements on `C` and
-// `D`.
+template <typename C, typename D = C>
+class LocalLockFreeMetric;
+
+// Implements a local (just between 2 threads) lock- (wait-)free metric
+// collection, the "update" part.
 //
 // This class allows communication just between two threads and is a building
 // block for `LockFreeMetric`. In vast majority of cases you'll want to use
 // `LockFreeMetric`, which works for arbitrary number of threads.
 template <typename C, typename D = C>
-class LocalLockFreeMetric {
+class LocalLockFreeMetricUpdate {
  public:
   static_assert(std::is_default_constructible_v<C>,
                 "`C` must be a default-constructible type");
@@ -69,35 +68,6 @@ class LocalLockFreeMetric {
       next.KeepJustLast();
     }
     next.Append(std::move(value));
-  }
-
-  // Returns a collection of all `D` values passed to `Update` (by the other
-  // thread) accumulated into `C{}` using `operator+=(C&, D)` since the last
-  // call to `Collect`.
-  ABSL_MUST_USE_RESULT C Collect() {
-    Slice& next = exchange_.PassRight().first;
-    // On return `next.empty()` holds.
-    const int_fast32_t seen = collect_index_ - next.start();
-    if (seen < 0) {
-      ABSL_LOG(FATAL) << "Missing range " << collect_index_ << ".."
-                      << next.start();
-      return C{};  // Unreachable.
-    } else if (seen < next.size()) {
-      if (seen > 0) {
-        ABSL_DCHECK_EQ(seen, next.size() - 1)
-            << "next.start = " << next.start()
-            << ", next.size() = " << next.size()
-            << ", collect_index_ = " << collect_index_;
-        next.KeepJustLast();
-      }
-      // ABSL_VLOG(4) << "seen = " << seen << ", remaining " << next.size();
-      collect_index_ += next.size();
-      return next.CollectAndReset();
-    } else {
-      ABSL_DCHECK(next.empty());
-      next.Reset(collect_index_);
-      return C{};
-    }
   }
 
  private:
@@ -147,8 +117,57 @@ class LocalLockFreeMetric {
     std::optional<D> last_;
   };
 
-  int_fast32_t collect_index_ = 0;
   Local3StateExchange<Slice> exchange_;
+
+  friend class LocalLockFreeMetric<C, D>;
+};
+
+// Collects atomically values of type `D` from one thread into values of type
+// `C` available in another thread. Each call to `Update` or `Collect` uses
+// just a single atomic, wait-free operation.
+//
+// See class `LockFreeMetric` below for details about requirements on `C` and
+// `D`.
+//
+// This class allows communication just between two threads and is a building
+// block for `LockFreeMetric`. In vast majority of cases you'll want to use
+// `LockFreeMetric`, which works for arbitrary number of threads.
+template <typename C, typename D>
+class LocalLockFreeMetric final : public LocalLockFreeMetricUpdate<C, D> {
+ public:
+  // Returns a collection of all `D` values passed to `Update` (by the other
+  // thread) accumulated into `C{}` using `operator+=(C&, D)` since the last
+  // call to `Collect`.
+  ABSL_MUST_USE_RESULT C Collect() {
+    Slice& next = LocalLockFreeMetricUpdate<C, D>::exchange_.PassRight().first;
+    // On return `next.empty()` holds.
+    const int_fast32_t seen = collect_index_ - next.start();
+    if (seen < 0) {
+      ABSL_LOG(FATAL) << "Missing range " << collect_index_ << ".."
+                      << next.start();
+      return C{};  // Unreachable.
+    } else if (seen < next.size()) {
+      if (seen > 0) {
+        ABSL_DCHECK_EQ(seen, next.size() - 1)
+            << "next.start = " << next.start()
+            << ", next.size() = " << next.size()
+            << ", collect_index_ = " << collect_index_;
+        next.KeepJustLast();
+      }
+      // ABSL_VLOG(4) << "seen = " << seen << ", remaining " << next.size();
+      collect_index_ += next.size();
+      return next.CollectAndReset();
+    } else {
+      ABSL_DCHECK(next.empty());
+      next.Reset(collect_index_);
+      return C{};
+    }
+  }
+
+ private:
+  using Slice = typename LocalLockFreeMetricUpdate<C, D>::Slice;
+
+  int_fast32_t collect_index_ = 0;
 };
 
 // Collects values of type `D` from one thread into values of type `C`
@@ -186,6 +205,8 @@ class LocalLockFreeMetric {
 template <typename C, typename D = C>
 class LockFreeMetric {
  public:
+  using View = LocalLockFreeMetricUpdate<C, D>;
+
   LockFreeMetric() = default;
 
   // Updates this thread's instance of `C` with `value` using
@@ -196,9 +217,21 @@ class LockFreeMetric {
   // construct a thread-local channel for it. All subsequent alls are very
   // fast.
   //
-  // Thread-safe, lock-free.
+  // Thread-safe, wait-free.
   inline void Update(D value) {
     locals_.try_emplace().first.Update(std::move(value));
+  }
+
+  // Returns a thread-local reference that allows updating the metric directly.
+  // Using `View` directly skips accessing the internal `LockFreeMetric`'s
+  // `thread_local` variable, making updates truly wait-free regardless of the
+  // `thread_local` implementation.
+  //
+  // The returned reference is valid only for the current thread.
+  //
+  // Thread-safe, wait-free.
+  inline View& ThreadLocalView() noexcept {
+    return locals_.try_emplace().first;
   }
 
   // Collects all `C` instances from all threads. Each element of the returned

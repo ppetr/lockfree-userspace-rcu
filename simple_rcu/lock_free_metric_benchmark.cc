@@ -87,6 +87,35 @@ struct Context {
   LockFreeMetric<T> metric;
 };
 
+static void BM_MultiThreadedUpdateView(benchmark::State& state) {
+  auto& ctx = *Context<int_fast64_t>::Static();
+  const int i = state.thread_index();
+  if (i == 0) {
+    ctx.counts = std::vector<int64_t>(state.threads(), 0);
+  }
+  auto& view = ctx.metric.ThreadLocalView();
+  for (auto _ : state) {
+    view.Update(++ctx.counts[i]);
+  }
+  if (i == 0) {
+    int64_t measured = 0;
+    for (int_fast64_t c : ctx.metric.Collect()) {
+      measured += c;
+    }
+    // Compare the results.
+    int64_t expected = 0;
+    for (int64_t c : ctx.counts) {
+      expected += (c * (c + 1)) / 2;
+    }
+    ABSL_CHECK_EQ(expected, measured);
+  }
+}
+BENCHMARK(BM_MultiThreadedUpdateView)
+    ->ThreadRange(1, 64)
+    ->Setup(Setup<Context<int_fast64_t>>)
+    ->Teardown(Teardown<Context<int_fast64_t>>)
+    ->Complexity();
+
 static void BM_MultiThreadedUpdateThreadLocal(benchmark::State& state) {
   auto& ctx = *Context<int_fast64_t>::Static();
   const int i = state.thread_index();
