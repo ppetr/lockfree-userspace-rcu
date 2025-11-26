@@ -11,8 +11,19 @@ _*Disclaimer:* This is not an officially supported Google product._
 This library builds on (possibly) novel concepts that allows critical
 operations (fetching a RCU snapshot, updating a value in a metric) to be
 atomic, lock-free and
-**[wait-free](https://en.wikipedia.org/wiki/Non-blocking_algorithm#Wait-freedom)**
-(assuming that access to a `thread_local` variable can be considered wait-free).
+**[wait-free](https://en.wikipedia.org/wiki/Non-blocking_algorithm#Wait-freedom)**.
+
+## Design principles
+
+- Critical operations (RCU reading a snapshot, updating a metric) are lock- and
+  wait-free.
+- Instant data propagation. An operation finished by one thread should be
+  immediately visible to the other involved threads. In particular:
+  - RCU - once a call to `Update` finishes, all threads will observe the new
+    version in their `Snapshot`.
+  - Metric - when `Collect` is called, it observes all finished past calls to
+    `Update`.
+- Simple - internal logic should be encapsulated.
 
 ## Usage
 
@@ -31,7 +42,7 @@ rcu.Update(std::make_shared<MyType>(...));
 
 // Fetch the most recently `Update`d value. This is a wait-free operation.
 // See benchmark `BM_SnapshotSharedPtrThreadLocal` below.
-std::shared_ptr<MyType> ptr = simple_rcu::Snapshot(rcu);
+std::shared_ptr<MyType> ptr = rcu.Snapshot();
 ```
 
 ### Metrics
@@ -63,7 +74,7 @@ Testing dependencies:
 - https://github.com/google/benchmark (Git submodule)
 - https://github.com/google/googletest (Git submodule)
 
-## Benchmarks
+## Benchmarks (outdated!)
 
 The numbers `/1/` or `/4/` after a benchmark name denote the number of
 concurrent running threads performing the opposite operation - updates when

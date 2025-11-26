@@ -34,7 +34,8 @@
 
 namespace simple_rcu {
 
-// Generic, user-space RCU implementation with fast, atomic, lock-free reads.
+// Generic, user-space RCU implementation with fast, atomic, lock- (wait-)free
+// reads.
 //
 // `T` must be copyable.
 //
@@ -117,10 +118,12 @@ class CopyRcu {
   inline T Snapshot() noexcept { return ThreadLocalView().SnapshotRef().first; }
 
   // Retrieves the thread-local `View` for the current thread.
-  // This allows somewhat lower-level access than `Snapshot`, in particular to
-  // call `View::SnapshotRef`, and by keeping the `View&` reference, some
-  // (tiny) performance penalty related to fetching this thread-local `View&`
-  // instance.
+  //
+  // This allows somewhat lower-level access using `View::SnapshotRef`.
+  //
+  // Furthermore, using `View` directly skips accessing the internal
+  // `LockFreeMetric`'s `thread_local` variable, making updates truly wait-free
+  // regardless of the `thread_local` implementation.
   //
   // The returned reference is valid only for the current thread.
   //
