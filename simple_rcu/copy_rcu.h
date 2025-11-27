@@ -30,6 +30,7 @@
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
 #include "simple_rcu/local_3state_rcu.h"
+#include "simple_rcu/lock_guard.h"
 #include "simple_rcu/thread_local.h"
 
 namespace simple_rcu {
@@ -92,7 +93,7 @@ class CopyRcu {
   // Thread-safe.
   T Update(typename std::remove_const<T>::type value)
       ABSL_LOCKS_EXCLUDED(lock_) {
-    absl::MutexLock mutex(&lock_);
+    LockGuard guard(lock_);
     return UpdateLocked(std::move(value));
   }
   // Similar to `Update`, but replaces the value only if the old one satisfies
