@@ -16,6 +16,7 @@
 #define _SIMPLE_RCU_LOCK_FREE_METRIC_H
 
 #include <cstdint>
+#include <mutex>
 #include <optional>
 #include <type_traits>
 #include <utility>
@@ -241,7 +242,7 @@ class LockFreeMetric {
   //
   // Thread-safe.
   std::vector<C> Collect() {
-    absl::MutexLock mutex(&collect_lock_);
+    std::lock_guard mutex(collect_lock_);
     auto pruned = locals_.PruneAndList();
     std::vector<C> result;
     result.reserve(pruned.current.size() + pruned.abandoned.size());

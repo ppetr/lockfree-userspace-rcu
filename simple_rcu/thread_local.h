@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -122,7 +123,7 @@ class ThreadLocalDelayed {
       auto owned = std::make_unique<PerThread>(std::forward<Args>(args)...);
       PerThread *const ptr = owned.get();
       {
-        absl::MutexLock mutex(&shared_->per_thread_lock);
+        std::lock_guard mutex(shared_->per_thread_lock);
         shared_->per_thread.push_back(std::move(owned));
       }
       map_ptr =
@@ -155,7 +156,7 @@ class ThreadLocalDelayed {
   // None of the returned pointers are `nullptr`.
   PruneResult PruneAndList() {
     PruneResult result;
-    absl::MutexLock mutex(&shared_->per_thread_lock);
+    std::lock_guard mutex(shared_->per_thread_lock);
     std::vector<std::unique_ptr<PerThread>> &per_thread = shared_->per_thread;
     // Shrink-to-fit before removals as a small optimization - possibly the
     // roughly same number of new entries will be added until next call.
@@ -260,13 +261,13 @@ class ThreadLocalWeak {
    public:
     void Add(std::weak_ptr<PerThread> ptr)
         ABSL_LOCKS_EXCLUDED(per_thread_lock_) {
-      absl::MutexLock mutex(&per_thread_lock_);
+      std::lock_guard mutex(per_thread_lock_);
       per_thread_.emplace_back(ptr);
     }
 
     std::vector<std::shared_ptr<L>> PruneAndList()
         ABSL_LOCKS_EXCLUDED(per_thread_lock_) {
-      absl::MutexLock mutex(&per_thread_lock_);
+      std::lock_guard mutex(per_thread_lock_);
       PruneInternal();
       std::vector<std::shared_ptr<L>> result;
       result.reserve(per_thread_.size());
@@ -279,7 +280,7 @@ class ThreadLocalWeak {
     }
 
     void PruneOnly() ABSL_LOCKS_EXCLUDED(per_thread_lock_) {
-      absl::MutexLock mutex(&per_thread_lock_);
+      std::lock_guard mutex(per_thread_lock_);
       PruneInternal();
     }
 

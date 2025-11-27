@@ -15,6 +15,7 @@
 #ifndef _SIMPLE_RCU_REVERSE_RCU_H
 #define _SIMPLE_RCU_REVERSE_RCU_H
 
+#include <mutex>
 #include <type_traits>
 #include <utility>
 
@@ -88,11 +89,11 @@ class ReverseRcu {
         : rcu_(rcu), snapshot_depth_(0), local_rcu_() {
       // Allow `Snapshot` to `TryRead()` from the start.
       local_rcu_.ForceUpdate();
-      absl::MutexLock mutex(&rcu_.lock_);
+      std::lock_guard mutex(rcu_.lock_);
       rcu_.threads_.insert(this);
     }
     ~View() ABSL_LOCKS_EXCLUDED(rcu_.lock_) {
-      absl::MutexLock mutex(&rcu_.lock_);
+      std::lock_guard mutex(rcu_.lock_);
       rcu_.value_ += Collect();
       rcu_.threads_.erase(this);
     }
@@ -132,7 +133,7 @@ class ReverseRcu {
   //
   // Thread-safe.
   T Collect() ABSL_LOCKS_EXCLUDED(lock_) {
-    absl::MutexLock mutex(&lock_);
+    std::lock_guard mutex(lock_);
     for (View* thread : threads_) {
       value_ += thread->Collect();
     }
