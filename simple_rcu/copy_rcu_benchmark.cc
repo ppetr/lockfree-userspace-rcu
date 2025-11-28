@@ -59,7 +59,7 @@ static void Teardown(const benchmark::State& state) {
   context.reset();
 }
 
-static void BM_Reads(benchmark::State& state) {
+static void BM_Snapshot(benchmark::State& state) {
   static auto& context = StaticContext<int_fast32_t>();
   if (state.thread_index() == 0) {
     for (int i = 0; i < state.range(0); i++) {
@@ -80,14 +80,14 @@ static void BM_Reads(benchmark::State& state) {
     benchmark::ClobberMemory();
   }
 }
-BENCHMARK(BM_Reads)
+BENCHMARK(BM_Snapshot)
     ->ThreadRange(1, 64)
     ->Arg(1)
     ->Arg(4)
     ->Setup([](const benchmark::State&) { Setup<int_fast32_t>(0); })
     ->Teardown(Teardown<int_fast32_t>);
 
-static void BM_ReadsThreadLocal(benchmark::State& state) {
+static void BM_SnapshotThreadLocal(benchmark::State& state) {
   static auto& context = StaticContext<int_fast32_t>();
   if (state.thread_index() == 0) {
     for (int i = 0; i < state.range(0); i++) {
@@ -107,14 +107,14 @@ static void BM_ReadsThreadLocal(benchmark::State& state) {
     benchmark::ClobberMemory();
   }
 }
-BENCHMARK(BM_ReadsThreadLocal)
+BENCHMARK(BM_SnapshotThreadLocal)
     ->ThreadRange(1, 64)
     ->Arg(1)
     ->Arg(4)
     ->Setup([](const benchmark::State&) { Setup<int_fast32_t>(0); })
     ->Teardown(Teardown<int_fast32_t>);
 
-static void BM_ReadSharedPtrs(benchmark::State& state) {
+static void BM_SnapshotSharedPtr(benchmark::State& state) {
   static auto& context = StaticContext<std::shared_ptr<const int_fast32_t>>();
   if (state.thread_index() == 0) {
     for (int i = 0; i < state.range(0); i++) {
@@ -131,12 +131,12 @@ static void BM_ReadSharedPtrs(benchmark::State& state) {
   }
   Rcu<int_fast32_t>::View& local = context->rcu.ThreadLocalView();
   for (auto _ : state) {
-    auto& read = local.SnapshotRef().first;
+    auto read = *local.SnapshotRef().first;
     benchmark::DoNotOptimize(read);
     benchmark::ClobberMemory();
   }
 }
-BENCHMARK(BM_ReadSharedPtrs)
+BENCHMARK(BM_SnapshotSharedPtr)
     ->ThreadRange(1, 64)
     ->Arg(1)
     ->Arg(4)
@@ -145,25 +145,29 @@ BENCHMARK(BM_ReadSharedPtrs)
     })
     ->Teardown(Teardown<std::shared_ptr<const int_fast32_t>>);
 
-static void BM_ReadSharedPtrsThreadLocal(benchmark::State& state) {
+static void BM_SnapshotSharedPtrThreadLocal(benchmark::State& state) {
   static auto& context = StaticContext<std::shared_ptr<const int_fast32_t>>();
   if (state.thread_index() == 0) {
     for (int i = 0; i < state.range(0); i++) {
       context->threads.emplace_back([&]() {
         int_fast32_t updates = 0;
         while (!context->finished.load()) {
-          context->rcu.Update(std::make_shared<const int_fast32_t>(updates++));
+          auto previous = *context->rcu.Update(
+              std::make_shared<const int_fast32_t>(updates++));
+          benchmark::DoNotOptimize(previous);
+          benchmark::ClobberMemory();
         }
       });
     }
   }
+  CopyRcu<std::shared_ptr<const int_fast32_t>>& rcu = context->rcu;
   for (auto _ : state) {
-    auto read = *context->rcu.Snapshot();
+    auto read = *rcu.Snapshot();
     benchmark::DoNotOptimize(read);
     benchmark::ClobberMemory();
   }
 }
-BENCHMARK(BM_ReadSharedPtrsThreadLocal)
+BENCHMARK(BM_SnapshotSharedPtrThreadLocal)
     ->ThreadRange(1, 64)
     ->Arg(1)
     ->Arg(4)
