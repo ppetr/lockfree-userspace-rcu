@@ -51,7 +51,7 @@ class LocalLockFreeMetricUpdate {
                 "`D` must be a copyable type");
 
   inline void Update(D value) {
-    int_fast32_t last_start, last_end;
+    int_fast64_t last_start, last_end;
     {
       Slice& prev = exchange_.Left();
       prev.Append(value);
@@ -74,9 +74,9 @@ class LocalLockFreeMetricUpdate {
  private:
   class Slice final {
    public:
-    inline int_fast32_t start() const { return start_; }
-    inline int_fast32_t end() const { return end_; }
-    inline int_fast32_t size() const { return end_ - start_; }
+    inline int_fast64_t start() const { return start_; }
+    inline int_fast64_t end() const { return end_; }
+    inline int_fast64_t size() const { return end_ - start_; }
     inline bool empty() const { return !last_.has_value(); }
 
     inline void Append(D value) {
@@ -93,7 +93,7 @@ class LocalLockFreeMetricUpdate {
       collected_ = C{};
     }
 
-    inline void Reset(int_fast32_t new_start) {
+    inline void Reset(int_fast64_t new_start) {
       if (!empty()) {
         collected_ = C{};
         last_.reset();
@@ -111,8 +111,8 @@ class LocalLockFreeMetricUpdate {
     }
 
    private:
-    int_fast32_t start_ = 0;
-    int_fast32_t end_ = 0;
+    int_fast64_t start_ = 0;
+    int_fast64_t end_ = 0;
     C collected_;
     // Holds a value iff `end_ > start_`.
     std::optional<D> last_;
@@ -142,7 +142,7 @@ class LocalLockFreeMetric final : public LocalLockFreeMetricUpdate<C, D> {
   ABSL_MUST_USE_RESULT C Collect() {
     Slice& next = LocalLockFreeMetricUpdate<C, D>::exchange_.PassRight().first;
     // On return `next.empty()` holds.
-    const int_fast32_t seen = collect_index_ - next.start();
+    const int_fast64_t seen = collect_index_ - next.start();
     if (seen < 0) {
       ABSL_LOG(FATAL) << "Missing range " << collect_index_ << ".."
                       << next.start();
@@ -168,7 +168,7 @@ class LocalLockFreeMetric final : public LocalLockFreeMetricUpdate<C, D> {
  private:
   using Slice = typename LocalLockFreeMetricUpdate<C, D>::Slice;
 
-  int_fast32_t collect_index_ = 0;
+  int_fast64_t collect_index_ = 0;
 };
 
 // Collects values of type `D` from one thread into values of type `C`
