@@ -135,6 +135,12 @@ class CopyRcu {
         .first;
   }
 
+  // Frees up the thread_local resources for the current thread. Idempotent.
+  // Invalidates any references obtained from `ThreadLocalView()`.
+  // This is called automatically when the current thread exists, so usually
+  // there is no need to call this method explicitly.
+  void erase() noexcept { views_.erase(); }
+
  private:
   T UpdateLocked(typename std::remove_const<T>::type value)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(lock_) {

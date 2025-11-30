@@ -82,5 +82,14 @@ TEST(RcuTest, UpdateAndSnapshotPtr) {
   EXPECT_THAT(rcu.Snapshot(), Pointee(42));
 }
 
+TEST(RcuTest, EraseDestroys) {
+  Rcu<int> rcu;
+  rcu.Update(std::make_shared<int>(73));
+  std::shared_ptr<const int> ptr = rcu.ThreadLocalView().SnapshotRef().first;
+  const auto count_before = ptr.use_count();
+  rcu.erase();
+  EXPECT_LT(ptr.use_count(), count_before);
+}
+
 }  // namespace
 }  // namespace simple_rcu
