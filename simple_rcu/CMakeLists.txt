@@ -58,13 +58,3 @@ add_test(NAME lock_free_metric_benchmark COMMAND lock_free_metric_benchmark)
 add_executable(lock_free_metric_test lock_free_metric_test.cc)
 target_link_libraries(lock_free_metric_test lock_free_metric absl::random_random absl::synchronization absl::time gmock gtest_main)
 add_test(NAME lock_free_metric_test COMMAND lock_free_metric_test)
-
-
-
-add_library(reverse_rcu INTERFACE)
-target_include_directories(reverse_rcu INTERFACE .)
-target_link_libraries(reverse_rcu INTERFACE local_3state_rcu absl::base absl::flat_hash_set absl::synchronization absl::utility atomic)
-
-add_executable(reverse_rcu_test reverse_rcu_test.cc)
-target_link_libraries(reverse_rcu_test reverse_rcu gtest_main)
-add_test(NAME reverse_rcu_test COMMAND reverse_rcu_test)
