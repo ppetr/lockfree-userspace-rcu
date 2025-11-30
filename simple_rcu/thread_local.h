@@ -92,6 +92,9 @@ class InternalPerThreadBase {
 //
 // This allows (1) to asynchronously process any state left over there and
 // (2) speeds up destruction of finishing threads.
+//
+// All instances (regardless of `L`) share just a single static `thread_local`
+// map variable to minimize overhead with constructing/destroying threads.
 template <typename L>
 class ThreadLocalDelayed {
  public:
@@ -196,6 +199,9 @@ class ThreadLocalDelayed {
 // `L` are only weakly referenced by the central class. When a thread finishes
 // execution, its `ThreadLocalWeak` variables will be destroyed, unless they
 // have been `lock()`-ed by a previously/concurrently running call to `Prune`.
+//
+// All instances (regardless of `L`) share just a single static `thread_local`
+// map variable to minimize overhead with constructing/destroying threads.
 template <typename L>
 class ThreadLocalWeak {
  public:

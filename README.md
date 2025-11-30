@@ -66,6 +66,7 @@ std::vector<absl::int128> collected = metric.Collect();
 
 ## Dependencies
 
+- C++ 17 or later.
 - `cmake` (https://cmake.org/).
 - https://github.com/abseil/abseil-cpp (Git submodule)
 
