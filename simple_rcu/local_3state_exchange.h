@@ -24,28 +24,6 @@ namespace simple_rcu {
 
 template <typename T>
 class Local3StateExchange {
- public:
-  Local3StateExchange() : left_(0), passing_(1), right_(2) {}
-
-  inline const T& Left() const { return values_[left_]; }
-  inline T& Left() { return values_[left_]; }
-
-  inline std::pair<T&, bool> PassLeft() {
-    const Index received = passing_.exchange(left_, std::memory_order_acq_rel);
-    left_ = received & kIndexMask;
-    return {Left(), received & kByRightMask};
-  }
-
-  inline const T& Right() const { return values_[right_]; }
-  inline T& Right() { return values_[right_]; }
-
-  inline std::pair<T&, bool> PassRight() {
-    const Index received =
-        passing_.exchange(right_ | kByRightMask, std::memory_order_acq_rel);
-    right_ = received & kIndexMask;
-    return {Right(), !(received & kByRightMask)};
-  }
-
  private:
   using Index = AtomicSignedLockFree;
   static_assert(!std::is_void_v<Index> &&
@@ -54,11 +32,78 @@ class Local3StateExchange {
                 "bug on the project's GitHub page");
 
   constexpr static Index kIndexMask = 3;
-  constexpr static Index kByRightMask = 4;
+  constexpr static Index kRightMask = 4;
+  constexpr static Index kExchangedMask = 8;
 
-  Index left_;
+  struct Context final {
+    // Stores just the first `kIndexMask` bits.
+    Index index;
+    // Stored with all bits, exactly what has been written to the atomic
+    // variable.
+    Index last;
+  };
+
+ public:
+  template <bool Right>
+  class Side final {
+   public:
+    inline const T& ref() const { return main_.values_[context().index]; }
+    inline T& ref() { return main_.values_[context().index]; }
+
+    struct PassResult {
+      T& ref;
+      bool exchanged;
+      bool past_exchanged;
+    };
+
+    inline PassResult Pass() {
+      Context& ctx = context();
+      Index received = ctx.last;
+      // TODO: new_index can be just ctx.last.
+      Index new_index = ctx.index | (Right ? kRightMask : 0);
+      const bool exchanged = !main_.passing_.compare_exchange_strong(
+          received, new_index, std::memory_order_acq_rel);
+      if (exchanged) {
+        new_index |= kExchangedMask;
+        received =
+            main_.passing_.exchange(new_index, std::memory_order_acq_rel);
+      }
+      ctx.last = new_index;
+      ctx.index = received & kIndexMask;
+      return PassResult{.ref = ref(),
+                        .exchanged = exchanged,
+                        .past_exchanged = (received & kExchangedMask) != 0};
+    }
+
+   private:
+    using Index = Local3StateExchange::Index;
+
+    inline explicit Side(Local3StateExchange& main) : main_(main) {}
+
+    inline Context& context() { return main_.context_[Right]; }
+
+    Local3StateExchange& main_;
+
+    friend class Local3StateExchange;
+  };
+
+  Local3StateExchange()
+      : passing_(1),
+        context_{Context{.index = 0, .last = 1},
+                 Context{.index = 2, .last = -1}} {}
+
+  template <bool Right>
+  Side<Right> side() {
+    return Side<Right>(*this);
+  }
+  template <bool Right>
+  const Side<Right> side() const {
+    return Side<Right>(*this);
+  }
+
+ private:
   std::atomic<Index> passing_;
-  Index right_;
+  std::array<Context, 2> context_;
   std::array<T, 3> values_{T{}, T{}, T{}};
 };
 

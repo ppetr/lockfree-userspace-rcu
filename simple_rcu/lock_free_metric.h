@@ -53,22 +53,22 @@ class LocalLockFreeMetricUpdate {
   inline void Update(D value) {
     int_fast64_t last_start, last_end;
     {
-      Slice& prev = exchange_.Left();
+      Slice& prev = exchange_.template side<false>().ref();
       prev.Append(value);
       last_start = prev.start();
       last_end = prev.end();
     }
-    const auto [next, exchanged] = exchange_.PassLeft();
-    if (exchanged) {
-      ABSL_DCHECK(next.empty());
+    const auto next = exchange_.template side<false>().Pass();
+    if (next.exchanged) {
+      ABSL_DCHECK(next.ref.empty());
       // The previous value was at `last_end - 1`, which has now been seen by
       // the collecting side.
-      next.Reset(last_end - 1);
-    } else if (auto advance = last_start - next.start(); advance > 0) {
-      ABSL_DCHECK_EQ(advance, next.size() - 1);
-      next.KeepJustLast();
+      next.ref.Reset(last_end - 1);
+    } else if (auto advance = last_start - next.ref.start(); advance > 0) {
+      ABSL_DCHECK_EQ(advance, next.ref.size() - 1);
+      next.ref.KeepJustLast();
     }
-    next.Append(std::move(value));
+    next.ref.Append(std::move(value));
   }
 
  private:
@@ -140,7 +140,10 @@ class LocalLockFreeMetric final : public LocalLockFreeMetricUpdate<C, D> {
   // thread) accumulated into `C{}` using `operator+=(C&, D)` since the last
   // call to `Collect`.
   ABSL_MUST_USE_RESULT C Collect() {
-    Slice& next = LocalLockFreeMetricUpdate<C, D>::exchange_.PassRight().first;
+    Slice& next =
+        LocalLockFreeMetricUpdate<C, D>::exchange_.template side<true>()
+            .Pass()
+            .ref;
     // On return `next.empty()` holds.
     const int_fast64_t seen = collect_index_ - next.start();
     if (seen < 0) {

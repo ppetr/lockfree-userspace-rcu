@@ -58,3 +58,15 @@ add_test(NAME lock_free_metric_benchmark COMMAND lock_free_metric_benchmark)
 add_executable(lock_free_metric_test lock_free_metric_test.cc)
 target_link_libraries(lock_free_metric_test lock_free_metric absl::random_random absl::synchronization absl::time gmock gtest_main)
 add_test(NAME lock_free_metric_test COMMAND lock_free_metric_test)
+
+add_library(two_thread_concurrent INTERFACE)
+target_include_directories(two_thread_concurrent INTERFACE .)
+target_link_libraries(two_thread_concurrent INTERFACE local_3state_exchange thread_local absl::absl_check absl::absl_log absl::base absl::synchronization)
+
+# add_executable(two_thread_concurrent_benchmark two_thread_concurrent_benchmark.cc)
+# target_link_libraries(two_thread_concurrent_benchmark two_thread_concurrent absl::absl_check absl::absl_log benchmark::benchmark_main)
+# add_test(NAME two_thread_concurrent_benchmark COMMAND two_thread_concurrent_benchmark)
+
+add_executable(two_thread_concurrent_test two_thread_concurrent_test.cc)
+target_link_libraries(two_thread_concurrent_test two_thread_concurrent absl::random_random absl::synchronization absl::time gmock gtest_main)
+add_test(NAME two_thread_concurrent_test COMMAND two_thread_concurrent_test)
