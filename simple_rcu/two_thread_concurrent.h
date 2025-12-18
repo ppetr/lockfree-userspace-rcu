@@ -47,8 +47,8 @@ class TwoThreadConcurrent {
     std::optional<Slice> prev_copy(std::nullopt);
     {
       Slice& prev_ptr = exchange_.template side<Right>().ref();
-      prev_copy = prev_ptr;
       prev_ptr.Append(value);
+      prev_copy = prev_ptr;
     }
 
     const auto next = exchange_.template side<Right>().Pass();
@@ -58,12 +58,15 @@ class TwoThreadConcurrent {
                  << ", prev_copy.collected_=" << prev_copy->collected_
                  << ", value=" << value;
     if (next.past_exchanged) {
-      if (next.exchanged) {
-        prev_copy->Append(std::nullopt);
-      }
       next.ref.collected_ = std::move(prev_copy)->collected_;
+      if (next.exchanged) {
+        next.ref.Append(std::move(value));
+      } else {
+        next.ref.last_ = std::move(value);
+      }
+    } else {
+      next.ref.Append(std::move(value));
     }
-    next.ref.Append(std::move(value));
     ABSL_VLOG(5) << "OUT: Right=" << Right
                  << ", next.collected_=" << next.ref.collected_;
     return next.ref.collected_;
