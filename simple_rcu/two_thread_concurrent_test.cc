@@ -193,5 +193,16 @@ TEST(TwoThreadConcurrentTest, TwoThreads) {
   }
 }
 
+TEST(TwoThreadConcurrentTest, NoDefaultConstructible) {
+  struct Foo {
+    Foo() = delete;
+    explicit Foo(std::in_place_t) {}
+
+    Foo& operator+=(const Foo&) { return *this; }
+  };
+
+  TwoThreadConcurrent<Foo>(Foo(std::in_place));
+}
+
 }  // namespace
 }  // namespace simple_rcu

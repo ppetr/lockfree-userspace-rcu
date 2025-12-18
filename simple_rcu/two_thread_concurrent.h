@@ -36,7 +36,10 @@ class TwoThreadConcurrent {
   static_assert(std::is_copy_constructible_v<D> && std::is_copy_assignable_v<D>,
                 "`D` must be a copyable type");
 
-  TwoThreadConcurrent() = default;
+  template <typename C1 = C, typename std::enable_if_t<
+                                 std::is_default_constructible_v<C1>, int> = 0>
+  TwoThreadConcurrent() : exchange_() {}
+
   explicit TwoThreadConcurrent(const C& initial)
       : exchange_(std::in_place, initial) {}
 
