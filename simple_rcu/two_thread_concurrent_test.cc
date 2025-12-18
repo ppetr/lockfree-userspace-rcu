@@ -25,6 +25,7 @@
 
 #include "absl/random/random.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -33,12 +34,6 @@
 
 namespace simple_rcu {
 namespace {
-
-using ::testing::ElementsAre;
-using ::testing::Eq;
-using ::testing::Field;
-using ::testing::IsEmpty;
-using ::testing::Optional;
 
 template <typename C, typename Sink>
 void FormatCollection(Sink& sink, const C& c) {
@@ -94,22 +89,16 @@ void AppendTo(std::deque<T>&& input, std::deque<T>& target) {
                 std::make_move_iterator(input.end()));
 }
 
-TEST(TwoThreadConcurrentTest, ChangeSeenImmediatelyInt) {
-  TwoThreadConcurrent<int> metric;
-  /*
-  EXPECT_EQ(metric.Update<true>(0), 0);
-  metric.Update<false>(0);
-  metric.Update<false>(0);
-  */
-
-  metric.Update<false>(1);
-  EXPECT_EQ(metric.Update<true>(2), 1);
-  EXPECT_EQ(metric.Update<true>(0), 3);
+TEST(TwoThreadConcurrentTest, ChangeSeenImmediatelyString) {
+  TwoThreadConcurrent<std::string, absl::string_view> metric("");
+  EXPECT_EQ(metric.Update<false>("a"), "");
+  EXPECT_EQ(metric.Update<true>("b"), "a");
+  EXPECT_EQ(metric.Update<true>("c"), "ab");
   // Another round.
-  EXPECT_EQ(metric.Update<false>(2), 3);
-  EXPECT_EQ(metric.Update<false>(3), 5);
-  EXPECT_EQ(metric.Update<true>(0), 8);
-  EXPECT_EQ(metric.Update<true>(0), 8);
+  EXPECT_EQ(metric.Update<false>("x"), "abc");
+  EXPECT_EQ(metric.Update<false>(""), "abcx");
+  EXPECT_EQ(metric.Update<true>("y"), "abcx");
+  EXPECT_EQ(metric.Update<true>(""), "abcxy");
 }
 
 TEST(TwoThreadConcurrentTest, ZigZag) {
@@ -122,21 +111,6 @@ TEST(TwoThreadConcurrentTest, ZigZag) {
   EXPECT_EQ(metric.Update<true>(32), 31);
   EXPECT_EQ(metric.Update<true>(0), 63);
 }
-
-/*
-TEST(TwoThreadConcurrentTest, ChangeSeenImmediately) {
-  TwoThreadConcurrent<BackCollection<std::string>, char> metric;
-  EXPECT_THAT(metric.Collect().collection, IsEmpty());
-  metric.Update('a');
-  EXPECT_THAT(metric.Collect().collection, Eq("a"));
-  EXPECT_THAT(metric.Collect().collection, IsEmpty());
-  // Another round.
-  metric.Update('x');
-  metric.Update('y');
-  EXPECT_THAT(metric.Collect().collection, Eq("xy"));
-  EXPECT_THAT(metric.Collect().collection, IsEmpty());
-}
-*/
 
 TEST(TwoThreadConcurrentTest, Sequence) {
   static constexpr int_least32_t kCount = 0x100;
