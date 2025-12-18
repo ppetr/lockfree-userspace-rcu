@@ -17,6 +17,7 @@
 
 #include <array>
 #include <atomic>
+#include <utility>
 
 #include "simple_rcu/lock_free_int.h"
 
@@ -104,10 +105,15 @@ class Local3StateExchange {
     friend class Local3StateExchange;
   };
 
-  Local3StateExchange()
+  Local3StateExchange() : Local3StateExchange(std::in_place) {}
+  explicit Local3StateExchange(const T& initial)
+      : Local3StateExchange(std::in_place, initial) {}
+  template <typename... Args>
+  explicit Local3StateExchange(std::in_place_t, Args... args)
       : passing_(1),
         context_{Context{.index = 0, .last = 1},
-                 Context{.index = 2, .last = -1}} {}
+                 Context{.index = 2, .last = -1}},
+        values_{T(args...), T(args...), T(args...)} {}
 
   template <bool Right>
   Side<Right> side() {
@@ -121,7 +127,7 @@ class Local3StateExchange {
  private:
   std::atomic<Index> passing_;
   std::array<Context, 2> context_;
-  std::array<T, 3> values_{T{}, T{}, T{}};
+  std::array<T, 3> values_;
 };
 
 }  // namespace simple_rcu

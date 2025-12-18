@@ -31,12 +31,14 @@ namespace simple_rcu {
 template <typename C, typename D = C>
 class TwoThreadConcurrent {
  public:
-  static_assert(std::is_default_constructible_v<C>,
-                "`C` must be a default-constructible type");
-  static_assert(std::is_move_constructible_v<C> && std::is_move_assignable_v<C>,
-                "`C` must be a movable type");
+  static_assert(std::is_copy_constructible_v<C> && std::is_copy_assignable_v<C>,
+                "`C` must be a copyable type");
   static_assert(std::is_copy_constructible_v<D> && std::is_copy_assignable_v<D>,
                 "`D` must be a copyable type");
+
+  TwoThreadConcurrent() = default;
+  explicit TwoThreadConcurrent(const C& initial)
+      : exchange_(std::in_place, initial) {}
 
   template <bool Right>
   inline const C& Update(D value) {
@@ -62,6 +64,9 @@ class TwoThreadConcurrent {
  private:
   class Slice final {
    public:
+    Slice() = default;
+    explicit Slice(C initial) : collected_(std::move(initial)) {}
+
     inline void Append(D value) {
       if (ABSL_PREDICT_TRUE(last_.has_value())) {
         collected_ += std::exchange(*last_, std::move(value));
@@ -70,7 +75,8 @@ class TwoThreadConcurrent {
       }
     }
 
-    C collected_ = {};
+    C collected_;
+    // Populated on first `Update` and holds a value ever since.
     std::optional<D> last_;
   };
 
