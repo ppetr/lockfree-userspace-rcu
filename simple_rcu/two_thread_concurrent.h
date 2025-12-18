@@ -15,12 +15,9 @@
 #ifndef _SIMPLE_RCU_TWO_THREAD_CONCURRENT_H
 #define _SIMPLE_RCU_TWO_THREAD_CONCURRENT_H
 
-#include <cstdint>
-#include <mutex>
 #include <optional>
 #include <type_traits>
 #include <utility>
-#include <vector>
 
 #include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
@@ -43,19 +40,11 @@ class TwoThreadConcurrent {
 
   template <bool Right>
   inline const C& Update(D value) {
-    {
-      Slice& prev_ptr = exchange_.template side<Right>().ref();
-      prev_ptr.Append(value);
-    }
+    exchange_.template side<Right>().ref().Append(value);
 
     std::optional<Slice> prev_copy(std::nullopt);
     const auto next = exchange_.template side<Right>().Pass(
         [&prev_copy](const Slice& ref) { prev_copy = ref; });
-    ABSL_VLOG(5) << "IN: Right=" << Right << ", exchanged=" << next.exchanged
-                 << ", next.past_exchanged=" << next.past_exchanged
-                 << ", next.collected_=" << next.ref.collected_
-                 << ", prev_copy.collected_=" << prev_copy->collected_
-                 << ", value=" << value;
     if (next.past_exchanged) {
       ABSL_CHECK(prev_copy.has_value());
       next.ref.collected_ = std::move(prev_copy)->collected_;
@@ -67,17 +56,15 @@ class TwoThreadConcurrent {
     } else {
       next.ref.Append(std::move(value));
     }
-    ABSL_VLOG(5) << "OUT: Right=" << Right
-                 << ", next.collected_=" << next.ref.collected_;
     return next.ref.collected_;
   }
 
  private:
   class Slice final {
    public:
-    inline void Append(std::optional<D> value) {
+    inline void Append(D value) {
       if (ABSL_PREDICT_TRUE(last_.has_value())) {
-        collected_ += *std::exchange(last_, std::move(value));
+        collected_ += std::exchange(*last_, std::move(value));
       } else {
         last_ = std::move(value);
       }
