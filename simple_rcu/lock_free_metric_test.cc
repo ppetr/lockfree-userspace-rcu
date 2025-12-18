@@ -114,17 +114,18 @@ TEST(LocalLockFreeMetricTest, ChangeSeenImmediately) {
 
 TEST(LocalLockFreeMetricTest, TwoThreads) {
   static constexpr int_least32_t kCount = 0x10000;
-  absl::BitGen bitgen;
   LocalLockFreeMetric<BackCollection<std::deque<int_least32_t>>, int_least32_t>
       metric;
   absl::Notification updater_done;
   std::thread updater([&]() {
+    absl::BitGen bitgen;
     for (int_least32_t i = 0; i < kCount; i++) {
       metric.Update(i);
       absl::SleepFor(absl::Nanoseconds(absl::Uniform(bitgen, 0, 1000)));
     }
     updater_done.Notify();
   });
+  absl::BitGen bitgen;
   std::deque<int_least32_t> result;
   while (!updater_done.HasBeenNotified()) {
     AppendTo(metric.Collect().collection, result);
