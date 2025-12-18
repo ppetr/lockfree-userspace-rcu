@@ -22,6 +22,7 @@ echo "Signature: 8a477f597d28d172789f06886806bc55" >"${BASE}/build/CACHEDIR.TAG"
 schedtool -B -n10 $$ || true
 
 DIR="${BASE}/build/dev"
+target="all"
 mkdir -p "$DIR"
 cd "$DIR"
 while true ; do
@@ -32,7 +33,7 @@ while true ; do
   # to enable linting in editors that support this feature.
   CMAKE_EXPORT_COMPILE_COMMANDS=1 cmake "$@" "$BASE"
   if ! find "${BASE}/simple_rcu" -name '*.h' -or -name '*.cc' \
-    | CTEST_OUTPUT_ON_FAILURE=1 entr -d /bin/sh -c "make -j all && ctest -R '_test$'" ; then
+    | CTEST_OUTPUT_ON_FAILURE=1 entr -d /bin/sh -c "make -j$(nproc) ${target} && ctest -R '_test$'" ; then
     [ "$?" -eq 1 ] && break
   fi
   echo "Rerunning cmake"
