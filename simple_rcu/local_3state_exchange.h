@@ -57,13 +57,30 @@ class Local3StateExchange {
     };
 
     inline PassResult Pass() {
+      return Pass([](const T&) {});
+    }
+
+    // If it's possible that the result will have `past_exchanged` true,
+    // callback `might_double_exchange` is guaranteed to be called on the
+    // `ref()` value just before its passed on. However, its call will be
+    // avoided, if its possible to infer `!might_double_exchange`.
+    template <typename F>
+    inline PassResult Pass(F&& might_double_exchange) {
       Context& ctx = context();
+      bool called_might_double_exchange = (ctx.last & kExchangedMask) != 0;
+      if (called_might_double_exchange) {
+        std::forward<F>(might_double_exchange)(ref());
+      }
       Index received = ctx.last;
       // TODO: new_index can be just ctx.last.
       Index new_index = ctx.index | (Right ? kRightMask : 0);
       const bool exchanged = !main_.passing_.compare_exchange_strong(
           received, new_index, std::memory_order_acq_rel);
       if (exchanged) {
+        if (((received & kExchangedMask) != 0) &&
+            !std::exchange(called_might_double_exchange, true)) {
+          std::forward<F>(might_double_exchange)(ref());
+        }
         new_index |= kExchangedMask;
         received =
             main_.passing_.exchange(new_index, std::memory_order_acq_rel);

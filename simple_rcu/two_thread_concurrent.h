@@ -43,21 +43,21 @@ class TwoThreadConcurrent {
 
   template <bool Right>
   inline const C& Update(D value) {
-    // TODO use together with a Pass argument.
-    std::optional<Slice> prev_copy(std::nullopt);
     {
       Slice& prev_ptr = exchange_.template side<Right>().ref();
       prev_ptr.Append(value);
-      prev_copy = prev_ptr;
     }
 
-    const auto next = exchange_.template side<Right>().Pass();
+    std::optional<Slice> prev_copy(std::nullopt);
+    const auto next = exchange_.template side<Right>().Pass(
+        [&prev_copy](const Slice& ref) { prev_copy = ref; });
     ABSL_VLOG(5) << "IN: Right=" << Right << ", exchanged=" << next.exchanged
                  << ", next.past_exchanged=" << next.past_exchanged
                  << ", next.collected_=" << next.ref.collected_
                  << ", prev_copy.collected_=" << prev_copy->collected_
                  << ", value=" << value;
     if (next.past_exchanged) {
+      ABSL_CHECK(prev_copy.has_value());
       next.ref.collected_ = std::move(prev_copy)->collected_;
       if (next.exchanged) {
         next.ref.Append(std::move(value));
