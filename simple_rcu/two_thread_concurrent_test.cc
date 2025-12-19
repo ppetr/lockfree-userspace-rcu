@@ -57,7 +57,7 @@ void FormatCollection(Sink& sink, const C& c) {
 
 template <typename C>
 struct BackCollection {
-  using value_type = typename C::value_type;
+  using value_type = std::optional<typename C::value_type>;
 
   BackCollection() = default;
   BackCollection(BackCollection const&) = default;
@@ -65,12 +65,16 @@ struct BackCollection {
   BackCollection& operator=(BackCollection const&) = default;
   BackCollection& operator=(BackCollection&&) = default;
 
-  BackCollection& operator+=(const value_type& value) {
-    collection.emplace_back(value);
+  BackCollection& operator+=(const value_type& element) {
+    if (element.has_value()) {
+      collection.emplace_back(*element);
+    }
     return *this;
   }
-  BackCollection& operator+=(value_type&& value) {
-    collection.push_back(std::move(value));
+  BackCollection& operator+=(value_type&& element) {
+    if (element.has_value()) {
+      collection.push_back(*std::move(element));
+    }
     return *this;
   }
 
@@ -93,41 +97,41 @@ void AppendTo(std::deque<T>&& input, std::deque<T>& target) {
 }
 
 TEST(TwoThreadConcurrentTest, ChangeSeenImmediatelyString) {
-  TwoThreadConcurrent<std::string, absl::string_view> metric("");
-  EXPECT_THAT(metric.Update<false>("a"), Pair("", _));
-  EXPECT_THAT(metric.Update<true>("b"), Pair("a", true));
-  EXPECT_THAT(metric.Update<true>("c"), Pair("ab", false));
+  TwoThreadConcurrent<std::string, absl::string_view> ttc("");
+  EXPECT_THAT(ttc.Update<false>("a"), Pair("", _));
+  EXPECT_THAT(ttc.Update<true>("b"), Pair("a", true));
+  EXPECT_THAT(ttc.Update<true>("c"), Pair("ab", false));
   // Another round.
-  EXPECT_THAT(metric.Update<false>("x"), Pair("abc", _));
-  EXPECT_THAT(metric.Update<false>(""), Pair("abcx", false));
-  EXPECT_THAT(metric.Update<true>("y"), Pair("abcx", true));
-  EXPECT_THAT(metric.Update<true>(""), Pair("abcxy", false));
+  EXPECT_THAT(ttc.Update<false>("x"), Pair("abc", _));
+  EXPECT_THAT(ttc.Update<false>(""), Pair("abcx", false));
+  EXPECT_THAT(ttc.Update<true>("y"), Pair("abcx", true));
+  EXPECT_THAT(ttc.Update<true>(""), Pair("abcxy", false));
 }
 
 TEST(TwoThreadConcurrentTest, ZigZag) {
-  TwoThreadConcurrent<int> metric;
-  ASSERT_THAT(metric.Update<false>(1), Pair(0, _));
-  EXPECT_THAT(metric.Update<true>(2), Pair(1, true));
-  EXPECT_THAT(metric.Update<false>(4), Pair(3, true));
-  EXPECT_THAT(metric.Update<true>(8), Pair(7, true));
-  EXPECT_THAT(metric.Update<false>(16), Pair(15, true));
-  EXPECT_THAT(metric.Update<true>(32), Pair(31, true));
-  EXPECT_THAT(metric.Update<true>(0), Pair(63, false));
+  TwoThreadConcurrent<int> ttc;
+  ASSERT_THAT(ttc.Update<false>(1), Pair(0, _));
+  EXPECT_THAT(ttc.Update<true>(2), Pair(1, true));
+  EXPECT_THAT(ttc.Update<false>(4), Pair(3, true));
+  EXPECT_THAT(ttc.Update<true>(8), Pair(7, true));
+  EXPECT_THAT(ttc.Update<false>(16), Pair(15, true));
+  EXPECT_THAT(ttc.Update<true>(32), Pair(31, true));
+  EXPECT_THAT(ttc.Update<true>(0), Pair(63, false));
 }
 
 TEST(TwoThreadConcurrentTest, Sequence) {
+  using C = BackCollection<std::deque<int_least32_t>>;
   static constexpr int_least32_t kCount = 0x100;
   absl::BitGen bitgen;
-  TwoThreadConcurrent<BackCollection<std::deque<int_least32_t>>, int_least32_t>
-      metric;
+  TwoThreadConcurrent<C, C::value_type> ttc;
   std::vector<bool> bits;
   for (int_least32_t i = 0; i < kCount; i++) {
-    const BackCollection<std::deque<int_least32_t>>* last;
+    const C* last;
     const bool bit = bits.emplace_back(bool{absl::Bernoulli(bitgen, 0.5)});
     if (bit) {
-      last = &metric.Update<true>(i).first;
+      last = &ttc.Update<true>(i).first;
     } else {
-      last = &metric.Update<false>(i).first;
+      last = &ttc.Update<false>(i).first;
     }
     ASSERT_EQ(last->collection.size(), i)
         << BackCollection<std::vector<bool>>{bits};
@@ -140,28 +144,27 @@ TEST(TwoThreadConcurrentTest, Sequence) {
 }
 
 TEST(TwoThreadConcurrentTest, TwoThreads) {
+  using C = BackCollection<std::deque<int_least32_t>>;
   static constexpr int_least32_t kCount = 0x100;
   std::atomic<int_fast32_t> counter(0);
-  TwoThreadConcurrent<BackCollection<std::deque<int_least32_t>>, int_least32_t>
-      metric;
+  TwoThreadConcurrent<C, C::value_type> ttc;
   absl::Notification updater_done;
   std::thread updater([&]() {
     absl::BitGen bitgen;
     for (int_least32_t i = 0; i < kCount; i++) {
-      metric.Update<false>(counter += 1);
+      ttc.Update<false>(counter += 1);
       absl::SleepFor(absl::Nanoseconds(absl::Uniform(bitgen, 0, 1000)));
     }
     updater_done.Notify();
   });
   absl::BitGen bitgen;
   while (!updater_done.HasBeenNotified()) {
-    metric.Update<true>(counter += 1);
+    ttc.Update<true>(counter += 1);
     absl::SleepFor(absl::Nanoseconds(absl::Uniform(bitgen, 0, 1000)));
   }
   updater.join();
-  const auto& result = metric.Update<true>(counter += 1).first;
+  const auto& result = ttc.Update<true>(counter += 1).first;
   // Elements can be inserted out of order wrt `counter`.
-  ABSL_LOG(INFO) << "Collected elements: " << result.collection.size();
   std::deque<int_least32_t> collection = result.collection;
   ASSERT_EQ(collection.size(), counter.load() - 1) << result;
   std::sort(collection.begin(), collection.end());
@@ -171,15 +174,15 @@ TEST(TwoThreadConcurrentTest, TwoThreads) {
 }
 
 TEST(TwoThreadConcurrentTest, NoDefaultConstructible) {
+  struct Operation {};
   struct Foo {
-    Foo() = delete;
     explicit Foo(std::in_place_t) {}
 
-    Foo& operator+=(const Foo&) { return *this; }
+    Foo& operator+=(const Operation&) { return *this; }
   };
 
-  TwoThreadConcurrent<Foo>(Foo(std::in_place))
-      .Update<false>(Foo(std::in_place));
+  TwoThreadConcurrent<Foo, Operation>(Foo(std::in_place))
+      .Update<false>(Operation());
 }
 
 }  // namespace

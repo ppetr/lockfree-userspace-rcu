@@ -157,14 +157,5 @@ TEST(LockFreeMetricTest, ChangeSeenInOnlyInTheRightMetric) {
   EXPECT_THAT(other.Collect(), IsEmpty());
 }
 
-TEST(LockFreeMetricTest, ArbitraryFunctor) {
-  using StringF = AnyFunctor<std::string>;
-  LockFreeMetric<StringF, StringF::diff_type> metric;
-  metric.Update([](std::string& s) { s.append("abc"); });
-  metric.Update([](std::string& s) { s.insert(0, "xyz-"); });
-  EXPECT_THAT(metric.Collect(),
-              ElementsAre(Field(&StringF::value, Eq("xyz-abc"))));
-}
-
 }  // namespace
 }  // namespace simple_rcu

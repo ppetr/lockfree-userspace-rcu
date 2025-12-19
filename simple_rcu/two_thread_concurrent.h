@@ -35,10 +35,13 @@ class TwoThreadConcurrent {
                 "`C` must be a copyable type");
   static_assert(std::is_copy_constructible_v<D> && std::is_copy_assignable_v<D>,
                 "`D` must be a copyable type");
+  static_assert(std::is_default_constructible_v<D>,
+                "`D` must be default-constructible; such instances must act as "
+                "no-op on `C`");
 
   template <typename C1 = C, typename std::enable_if_t<
                                  std::is_default_constructible_v<C1>, int> = 0>
-  TwoThreadConcurrent() : exchange_() {}
+  TwoThreadConcurrent() : exchange_(std::in_place, C{}) {}
 
   explicit TwoThreadConcurrent(const C& initial)
       : exchange_(std::in_place, initial) {}
@@ -79,20 +82,15 @@ class TwoThreadConcurrent {
  private:
   class Slice final {
    public:
-    Slice() = default;
-    explicit Slice(C initial) : collected_(std::move(initial)) {}
+    explicit Slice(C initial) : collected_(std::move(initial)), last_{} {}
 
     inline void Append(D op) {
-      if (ABSL_PREDICT_TRUE(last_.has_value())) {
-        collected_ += std::exchange(*last_, std::move(op));
-      } else {
-        last_ = std::move(op);
-      }
+      collected_ += std::exchange(last_, std::move(op));
     }
 
     C collected_;
     // Populated on first `Update` and holds a value ever since.
-    std::optional<D> last_;
+    D last_;
   };
 
   Local3StateExchange<Slice> exchange_;
