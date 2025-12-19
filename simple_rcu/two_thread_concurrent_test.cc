@@ -185,5 +185,34 @@ TEST(TwoThreadConcurrentTest, NoDefaultConstructible) {
       .Update<false>(Operation());
 }
 
+// Wraps `C` to be acted upon by an arbitrary functor using
+// `operator+=`. This allows processing arbitrary changes on any
+// copyable `C` objects with:
+//
+//   LockFreeMetric<AnyFunctor<C>, std::function<void(C&)>>
+//
+// See test `ArbitraryFunctor` below.
+template <typename C>
+struct AnyFunctor {
+  using diff_type = std::function<void(C&)>;
+
+  AnyFunctor& operator+=(diff_type f) {
+    if (f != nullptr) {
+      f(value);
+    }
+    return *this;
+  }
+
+  C value;
+};
+
+TEST(TwoThreadConcurrentTest, ArbitraryFunctor) {
+  using StringF = AnyFunctor<std::string>;
+  TwoThreadConcurrent<StringF, StringF::diff_type> ttc;
+  ttc.Update<false>([](std::string& s) { s.append("abc"); });
+  ttc.Update<false>([](std::string& s) { s.insert(0, "xyz-"); });
+  EXPECT_EQ(ttc.Update<true>({}).first.value, "xyz-abc");
+}
+
 }  // namespace
 }  // namespace simple_rcu

@@ -60,26 +60,6 @@ struct BackCollection {
   C collection;
 };
 
-// Wraps `C` to be acted upon by an arbitrary functor using
-// `operator+=`. This allows metric-like collection of changes on
-// any default-constructed `C` objects such as:
-//
-//   LockFreeMetric<AnyFunctor<C>, std::function<void(C&)>>
-//
-// See test `ArbitraryFunctor` below.
-template <typename C>
-struct AnyFunctor {
-  using diff_type = std::function<void(C&)>;
-
-  template <typename F>
-  AnyFunctor& operator+=(F&& f) {
-    std::forward<F>(f)(value);
-    return *this;
-  }
-
-  C value;
-};
-
 template <typename T>
 void AppendTo(std::deque<T>&& input, std::deque<T>& target) {
   target.insert(target.end(), std::make_move_iterator(input.begin()),

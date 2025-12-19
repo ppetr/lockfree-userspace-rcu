@@ -131,7 +131,7 @@ class LocalLockFreeMetric final : public LocalLockFreeMetricUpdate<C, D> {
 //
 // Finally, any class and operations on can be wrapped as a metric by setting
 // `D = std::function<void(C&)>`, see `AnyFunctor` example in
-// `lock_free_metric_test.cc`.
+// `two_thread_concurrent_test.cc`.
 template <typename C, typename D = C>
 class LockFreeMetric {
  public:
