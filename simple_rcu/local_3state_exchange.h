@@ -88,6 +88,10 @@ class Local3StateExchange {
       }
       ctx.last = new_index;
       ctx.index = received & kIndexMask;
+      ABSL_DCHECK(called_might_double_exchange ||
+                  ((received & kExchangedMask) == 0))
+          << "On returning `past_exchanged = true` the `might_double_exchange` "
+             "callback must have been called";
       return PassResult{.ref = ref(),
                         .exchanged = exchanged,
                         .past_exchanged = (received & kExchangedMask) != 0};

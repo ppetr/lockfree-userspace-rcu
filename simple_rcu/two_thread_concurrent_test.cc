@@ -175,7 +175,8 @@ TEST(TwoThreadConcurrentTest, NoDefaultConstructible) {
     Foo& operator+=(const Foo&) { return *this; }
   };
 
-  TwoThreadConcurrent<Foo>(Foo(std::in_place));
+  TwoThreadConcurrent<Foo>(Foo(std::in_place))
+      .Update<false>(Foo(std::in_place));
 }
 
 }  // namespace

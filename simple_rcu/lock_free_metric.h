@@ -26,8 +26,8 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
-#include "simple_rcu/local_3state_exchange.h"
 #include "simple_rcu/thread_local.h"
+#include "simple_rcu/two_thread_concurrent.h"
 
 namespace simple_rcu {
 
@@ -51,74 +51,28 @@ class LocalLockFreeMetricUpdate {
                 "`D` must be a copyable type");
 
   inline void Update(D value) {
-    int_fast64_t last_start, last_end;
-    {
-      Slice& prev = exchange_.template side<false>().ref();
-      prev.Append(value);
-      last_start = prev.start();
-      last_end = prev.end();
-    }
-    const auto next = exchange_.template side<false>().Pass();
-    if (next.exchanged) {
-      ABSL_DCHECK(next.ref.empty());
-      // The previous value was at `last_end - 1`, which has now been seen by
-      // the collecting side.
-      next.ref.Reset(last_end - 1);
-    } else if (auto advance = last_start - next.ref.start(); advance > 0) {
-      ABSL_DCHECK_EQ(advance, next.ref.size() - 1);
-      next.ref.KeepJustLast();
-    }
-    next.ref.Append(std::move(value));
+    exchange_.template Update<false>(std::move(value));
   }
 
  private:
-  class Slice final {
-   public:
-    inline int_fast64_t start() const { return start_; }
-    inline int_fast64_t end() const { return end_; }
-    inline int_fast64_t size() const { return end_ - start_; }
-    inline bool empty() const { return !last_.has_value(); }
-
-    inline void Append(D value) {
-      if (last_.has_value()) {
-        collected_ += std::exchange(*last_, std::move(value));
+  struct Metric {
+    template <
+        typename E,
+        typename std::enable_if_t<
+            std::is_same_v<absl::remove_cvref_t<E>, std::optional<D>>, int> = 0>
+    inline Metric& operator+=(E&& increment_) {
+      if (increment_.has_value()) {
+        value += *std::forward<E>(increment_);
       } else {
-        last_ = std::move(value);
+        value = C{};
       }
-      end_++;
+      return *this;
     }
 
-    inline void KeepJustLast() {
-      start_ = end_ - 1;
-      collected_ = C{};
-    }
-
-    inline void Reset(int_fast64_t new_start) {
-      if (!empty()) {
-        collected_ = C{};
-        last_.reset();
-      }
-      end_ = (start_ = new_start);
-    }
-
-    C CollectAndReset() {
-      start_ = end_;
-      if (last_.has_value()) {
-        collected_ += *std::move(last_);
-        last_.reset();
-      }
-      return std::exchange(collected_, C{});
-    }
-
-   private:
-    int_fast64_t start_ = 0;
-    int_fast64_t end_ = 0;
-    C collected_;
-    // Holds a value iff `end_ > start_`.
-    std::optional<D> last_;
+    C value;
   };
 
-  Local3StateExchange<Slice> exchange_;
+  TwoThreadConcurrent<Metric, std::optional<D>> exchange_;
 
   friend class LocalLockFreeMetric<C, D>;
 };
@@ -140,38 +94,10 @@ class LocalLockFreeMetric final : public LocalLockFreeMetricUpdate<C, D> {
   // thread) accumulated into `C{}` using `operator+=(C&, D)` since the last
   // call to `Collect`.
   ABSL_MUST_USE_RESULT C Collect() {
-    Slice& next =
-        LocalLockFreeMetricUpdate<C, D>::exchange_.template side<true>()
-            .Pass()
-            .ref;
-    // On return `next.empty()` holds.
-    const int_fast64_t seen = collect_index_ - next.start();
-    if (seen < 0) {
-      ABSL_LOG(FATAL) << "Missing range " << collect_index_ << ".."
-                      << next.start();
-      return C{};  // Unreachable.
-    } else if (seen < next.size()) {
-      if (seen > 0) {
-        ABSL_DCHECK_EQ(seen, next.size() - 1)
-            << "next.start = " << next.start()
-            << ", next.size() = " << next.size()
-            << ", collect_index_ = " << collect_index_;
-        next.KeepJustLast();
-      }
-      // ABSL_VLOG(4) << "seen = " << seen << ", remaining " << next.size();
-      collect_index_ += next.size();
-      return next.CollectAndReset();
-    } else {
-      ABSL_DCHECK(next.empty());
-      next.Reset(collect_index_);
-      return C{};
-    }
+    return LocalLockFreeMetricUpdate<C, D>::exchange_
+        .template Update<true>(std::nullopt)
+        .value;
   }
-
- private:
-  using Slice = typename LocalLockFreeMetricUpdate<C, D>::Slice;
-
-  int_fast64_t collect_index_ = 0;
 };
 
 // Collects values of type `D` from one thread into values of type `C`

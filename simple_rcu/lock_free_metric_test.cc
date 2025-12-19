@@ -43,9 +43,9 @@ struct BackCollection {
   using value_type = typename C::value_type;
 
   BackCollection() = default;
-  BackCollection(BackCollection const&) = delete;
+  BackCollection(BackCollection const&) = default;
   BackCollection(BackCollection&&) = default;
-  BackCollection& operator=(BackCollection const&) = delete;
+  BackCollection& operator=(BackCollection const&) = default;
   BackCollection& operator=(BackCollection&&) = default;
 
   BackCollection& operator+=(const value_type& value) {
