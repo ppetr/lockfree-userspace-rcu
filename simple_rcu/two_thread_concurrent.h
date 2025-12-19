@@ -43,9 +43,21 @@ class TwoThreadConcurrent {
   explicit TwoThreadConcurrent(const C& initial)
       : exchange_(std::in_place, initial) {}
 
+  // Updates the value using operation `op`. The type parameter `Right`
+  // determines which thread (left/right) is performing the operation.
+  //
+  // Returns a reference to the value just **before `op` is applied**, and
+  // whether this update received a new version from the other thread.
+  // If it's desired to obtain `C` after `op` is applied, call another `Update`
+  // with a no-op operation, as in:
+  //
+  //    ttc.Update<false>(42);
+  //    const auto& value_after_update = ttc.Update<false>(0).first;
+  //
+  // The returned reference is valid only until another call to `Update`.
   template <bool Right>
-  inline const std::pair<C&, bool> Update(D value) {
-    exchange_.template side<Right>().ref().Append(value);
+  inline std::pair<const C&, bool> Update(D op) {
+    exchange_.template side<Right>().ref().Append(op);
 
     std::optional<Slice> prev_copy(std::nullopt);
     const auto next = exchange_.template side<Right>().Pass(
@@ -54,12 +66,12 @@ class TwoThreadConcurrent {
       ABSL_CHECK(prev_copy.has_value());
       next.ref.collected_ = std::move(prev_copy)->collected_;
       if (next.exchanged) {
-        next.ref.Append(std::move(value));
+        next.ref.Append(std::move(op));
       } else {
-        next.ref.last_ = std::move(value);
+        next.ref.last_ = std::move(op);
       }
     } else {
-      next.ref.Append(std::move(value));
+      next.ref.Append(std::move(op));
     }
     return {next.ref.collected_, next.exchanged};
   }
@@ -70,11 +82,11 @@ class TwoThreadConcurrent {
     Slice() = default;
     explicit Slice(C initial) : collected_(std::move(initial)) {}
 
-    inline void Append(D value) {
+    inline void Append(D op) {
       if (ABSL_PREDICT_TRUE(last_.has_value())) {
-        collected_ += std::exchange(*last_, std::move(value));
+        collected_ += std::exchange(*last_, std::move(op));
       } else {
-        last_ = std::move(value);
+        last_ = std::move(op);
       }
     }
 

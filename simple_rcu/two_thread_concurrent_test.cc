@@ -159,7 +159,7 @@ TEST(TwoThreadConcurrentTest, TwoThreads) {
     absl::SleepFor(absl::Nanoseconds(absl::Uniform(bitgen, 0, 1000)));
   }
   updater.join();
-  auto& result = metric.Update<true>(counter += 1).first;
+  const auto& result = metric.Update<true>(counter += 1).first;
   // Elements can be inserted out of order wrt `counter`.
   ABSL_LOG(INFO) << "Collected elements: " << result.collection.size();
   std::deque<int_least32_t> collection = result.collection;
