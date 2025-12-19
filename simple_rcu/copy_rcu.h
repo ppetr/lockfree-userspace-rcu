@@ -18,18 +18,14 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
 #include "absl/base/attributes.h"
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
-#include "absl/log/absl_log.h"
-#include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
-#include "absl/types/optional.h"
-#include "absl/types/variant.h"
 #include "simple_rcu/local_3state_rcu.h"
 #include "simple_rcu/thread_local.h"
 
@@ -99,14 +95,14 @@ class CopyRcu {
   // Similar to `Update`, but replaces the value only if the old one satisfies
   // the given predicate. Often the predicate will be an equality with a
   // previous value.
-  absl::optional<T> UpdateIf(typename std::remove_const<T>::type value,
-                             absl::FunctionRef<bool(const T &)> pred)
+  std::optional<T> UpdateIf(typename std::remove_const<T>::type value,
+                            absl::FunctionRef<bool(const T &)> pred)
       ABSL_LOCKS_EXCLUDED(lock_) {
     std::lock_guard mutex(lock_);
     if (pred(current_)) {
-      return absl::make_optional(UpdateLocked(std::move(value)));
+      return std::make_optional(UpdateLocked(std::move(value)));
     }
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   // Fetches a copy of the latest value passed to `Update`.
