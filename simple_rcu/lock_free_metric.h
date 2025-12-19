@@ -96,7 +96,7 @@ class LocalLockFreeMetric final : public LocalLockFreeMetricUpdate<C, D> {
   ABSL_MUST_USE_RESULT C Collect() {
     return LocalLockFreeMetricUpdate<C, D>::exchange_
         .template Update<true>(std::nullopt)
-        .value;
+        .first.value;
   }
 };
 

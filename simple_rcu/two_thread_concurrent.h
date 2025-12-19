@@ -44,7 +44,7 @@ class TwoThreadConcurrent {
       : exchange_(std::in_place, initial) {}
 
   template <bool Right>
-  inline const C& Update(D value) {
+  inline const std::pair<C&, bool> Update(D value) {
     exchange_.template side<Right>().ref().Append(value);
 
     std::optional<Slice> prev_copy(std::nullopt);
@@ -61,7 +61,7 @@ class TwoThreadConcurrent {
     } else {
       next.ref.Append(std::move(value));
     }
-    return next.ref.collected_;
+    return {next.ref.collected_, next.exchanged};
   }
 
  private:

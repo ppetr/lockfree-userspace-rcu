@@ -35,6 +35,9 @@
 namespace simple_rcu {
 namespace {
 
+using ::testing::_;
+using ::testing::Pair;
+
 template <typename C, typename Sink>
 void FormatCollection(Sink& sink, const C& c) {
   sink.Append("[");
@@ -91,25 +94,25 @@ void AppendTo(std::deque<T>&& input, std::deque<T>& target) {
 
 TEST(TwoThreadConcurrentTest, ChangeSeenImmediatelyString) {
   TwoThreadConcurrent<std::string, absl::string_view> metric("");
-  EXPECT_EQ(metric.Update<false>("a"), "");
-  EXPECT_EQ(metric.Update<true>("b"), "a");
-  EXPECT_EQ(metric.Update<true>("c"), "ab");
+  EXPECT_THAT(metric.Update<false>("a"), Pair("", _));
+  EXPECT_THAT(metric.Update<true>("b"), Pair("a", true));
+  EXPECT_THAT(metric.Update<true>("c"), Pair("ab", false));
   // Another round.
-  EXPECT_EQ(metric.Update<false>("x"), "abc");
-  EXPECT_EQ(metric.Update<false>(""), "abcx");
-  EXPECT_EQ(metric.Update<true>("y"), "abcx");
-  EXPECT_EQ(metric.Update<true>(""), "abcxy");
+  EXPECT_THAT(metric.Update<false>("x"), Pair("abc", _));
+  EXPECT_THAT(metric.Update<false>(""), Pair("abcx", false));
+  EXPECT_THAT(metric.Update<true>("y"), Pair("abcx", true));
+  EXPECT_THAT(metric.Update<true>(""), Pair("abcxy", false));
 }
 
 TEST(TwoThreadConcurrentTest, ZigZag) {
   TwoThreadConcurrent<int> metric;
-  ASSERT_EQ(metric.Update<false>(1), 0);
-  EXPECT_EQ(metric.Update<true>(2), 1);
-  EXPECT_EQ(metric.Update<false>(4), 3);
-  EXPECT_EQ(metric.Update<true>(8), 7);
-  EXPECT_EQ(metric.Update<false>(16), 15);
-  EXPECT_EQ(metric.Update<true>(32), 31);
-  EXPECT_EQ(metric.Update<true>(0), 63);
+  ASSERT_THAT(metric.Update<false>(1), Pair(0, _));
+  EXPECT_THAT(metric.Update<true>(2), Pair(1, true));
+  EXPECT_THAT(metric.Update<false>(4), Pair(3, true));
+  EXPECT_THAT(metric.Update<true>(8), Pair(7, true));
+  EXPECT_THAT(metric.Update<false>(16), Pair(15, true));
+  EXPECT_THAT(metric.Update<true>(32), Pair(31, true));
+  EXPECT_THAT(metric.Update<true>(0), Pair(63, false));
 }
 
 TEST(TwoThreadConcurrentTest, Sequence) {
@@ -122,9 +125,9 @@ TEST(TwoThreadConcurrentTest, Sequence) {
     const BackCollection<std::deque<int_least32_t>>* last;
     const bool bit = bits.emplace_back(bool{absl::Bernoulli(bitgen, 0.5)});
     if (bit) {
-      last = &metric.Update<true>(i);
+      last = &metric.Update<true>(i).first;
     } else {
-      last = &metric.Update<false>(i);
+      last = &metric.Update<false>(i).first;
     }
     ASSERT_EQ(last->collection.size(), i)
         << BackCollection<std::vector<bool>>{bits};
@@ -156,7 +159,7 @@ TEST(TwoThreadConcurrentTest, TwoThreads) {
     absl::SleepFor(absl::Nanoseconds(absl::Uniform(bitgen, 0, 1000)));
   }
   updater.join();
-  auto& result = metric.Update<true>(counter += 1);
+  auto& result = metric.Update<true>(counter += 1).first;
   // Elements can be inserted out of order wrt `counter`.
   ABSL_LOG(INFO) << "Collected elements: " << result.collection.size();
   std::deque<int_least32_t> collection = result.collection;
