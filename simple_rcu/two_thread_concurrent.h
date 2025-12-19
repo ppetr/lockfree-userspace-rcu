@@ -29,15 +29,21 @@
 namespace simple_rcu {
 
 template <typename C, typename D = C>
+struct OperatorPlus {
+  static constexpr inline D NoOp() { return D{}; }
+
+  static inline C& Update(C& target, D diff) {
+    return target += std::move(diff);
+  }
+};
+
+template <typename C, typename D = C, typename U = OperatorPlus<C, D>>
 class TwoThreadConcurrent {
  public:
   static_assert(std::is_copy_constructible_v<C> && std::is_copy_assignable_v<C>,
                 "`C` must be a copyable type");
   static_assert(std::is_copy_constructible_v<D> && std::is_copy_assignable_v<D>,
                 "`D` must be a copyable type");
-  static_assert(std::is_default_constructible_v<D>,
-                "`D` must be default-constructible; such instances must act as "
-                "no-op on `C`");
 
   template <typename C1 = C, typename std::enable_if_t<
                                  std::is_default_constructible_v<C1>, int> = 0>
@@ -46,21 +52,21 @@ class TwoThreadConcurrent {
   explicit TwoThreadConcurrent(const C& initial)
       : exchange_(std::in_place, initial) {}
 
-  // Updates the value using operation `op`. The type parameter `Right`
+  // Updates the value using operation `diff`. The type parameter `Right`
   // determines which thread (left/right) is performing the operation.
   //
-  // Returns a reference to the value just **before `op` is applied**, and
-  // whether this update received a new version from the other thread.
-  // If it's desired to obtain `C` after `op` is applied, call another `Update`
-  // with a no-op operation, as in:
+  // Returns a reference to the value just **before `diff` is applied**, and
+  // whether this update received a new version from the other thread.  If it's
+  // desired to obtain `C` after `diff` is applied, call another `Update` with
+  // a no-op operation, as in:
   //
   //    ttc.Update<false>(42);
   //    const auto& value_after_update = ttc.Update<false>(0).first;
   //
   // The returned reference is valid only until another call to `Update`.
   template <bool Right>
-  inline std::pair<const C&, bool> Update(D op) {
-    exchange_.template side<Right>().ref().Append(op);
+  inline std::pair<const C&, bool> Update(D diff) {
+    exchange_.template side<Right>().ref().Append(diff);
 
     std::optional<Slice> prev_copy(std::nullopt);
     const auto next = exchange_.template side<Right>().Pass(
@@ -69,12 +75,12 @@ class TwoThreadConcurrent {
       ABSL_CHECK(prev_copy.has_value());
       next.ref.collected_ = std::move(prev_copy)->collected_;
       if (next.exchanged) {
-        next.ref.Append(std::move(op));
+        next.ref.Append(std::move(diff));
       } else {
-        next.ref.last_ = std::move(op);
+        next.ref.last_ = std::move(diff);
       }
     } else {
-      next.ref.Append(std::move(op));
+      next.ref.Append(std::move(diff));
     }
     return {next.ref.collected_, next.exchanged};
   }
@@ -82,10 +88,11 @@ class TwoThreadConcurrent {
  private:
   class Slice final {
    public:
-    explicit Slice(C initial) : collected_(std::move(initial)), last_{} {}
+    explicit Slice(C initial)
+        : collected_(std::move(initial)), last_{U::NoOp()} {}
 
-    inline void Append(D op) {
-      collected_ += std::exchange(last_, std::move(op));
+    inline void Append(D diff) {
+      U::Update(collected_, std::exchange(last_, std::move(diff)));
     }
 
     C collected_;
