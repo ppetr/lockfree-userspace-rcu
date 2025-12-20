@@ -85,6 +85,17 @@ class TwoThreadConcurrent {
     return {next.ref.collected_, next.exchanged};
   }
 
+  // Just as `Update` above, but issues a `U::NoOp()` operation after `diff` to
+  // ensure `diff` is visible to the caller in the result.
+  //
+  // WARNING: When calling this method (by any thread) it's no longer
+  // meaningful to observe exchanges, because they can be just no-ops.
+  template <bool Right>
+  inline const C& UpdateSelfVisible(D diff) {
+    Update<Right>(std::move(diff));
+    return Update<Right>(U::NoOp()).first;
+  }
+
  private:
   class Slice final {
    public:

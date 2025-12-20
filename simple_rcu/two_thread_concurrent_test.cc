@@ -108,6 +108,18 @@ TEST(TwoThreadConcurrentTest, ChangeSeenImmediatelyString) {
   EXPECT_THAT(ttc.Update<true>(""), Pair("abcxy", false));
 }
 
+TEST(TwoThreadConcurrentTest, SelfVisibleChangesString) {
+  TwoThreadConcurrent<std::string> ttc("");
+  EXPECT_THAT(ttc.UpdateSelfVisible<false>("a"), "a");
+  EXPECT_THAT(ttc.UpdateSelfVisible<true>("b"), "ab");
+  EXPECT_THAT(ttc.UpdateSelfVisible<true>("c"), "abc");
+  // Another round.
+  EXPECT_THAT(ttc.UpdateSelfVisible<false>("x"), "abcx");
+  EXPECT_THAT(ttc.UpdateSelfVisible<false>(""), "abcx");
+  EXPECT_THAT(ttc.UpdateSelfVisible<true>("y"), "abcxy");
+  EXPECT_THAT(ttc.UpdateSelfVisible<true>(""), "abcxy");
+}
+
 TEST(TwoThreadConcurrentTest, ZigZag) {
   TwoThreadConcurrent<int> ttc;
   ASSERT_THAT(ttc.Update<false>(1), Pair(0, _));
