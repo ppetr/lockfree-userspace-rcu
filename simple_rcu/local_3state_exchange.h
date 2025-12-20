@@ -70,6 +70,10 @@ class Local3StateExchange {
       Context& ctx = context();
       bool called_might_double_exchange = (ctx.last & kExchangedMask) != 0;
       if (called_might_double_exchange) {
+        // The last call this thread observed so far was an exchange. If there
+        // was no call by the other thread since then (which we'll know only
+        // after the following CaS call), the callback needs to be called (and
+        // it has to be before the CaS call).
         std::forward<F>(might_double_exchange)(ref());
       }
       Index received = ctx.last;
@@ -78,6 +82,18 @@ class Local3StateExchange {
       const bool exchanged = !main_.passing_.compare_exchange_strong(
           received, new_index, std::memory_order_acq_rel);
       if (exchanged) {
+        // At this point we're using just two bits of information from the
+        // failed CaS instruction:
+        // (1) That the value didn't match `ctx.last`. Since the other thread
+        //     always sets the opposite `kRightMask` bit, this will
+        //     consistently signal a change by the other thread regardless of
+        //     other state changes (thus preventing the ABA problem).
+        // (2) The `kExchangedMask` is used only opportunisticly for
+        //     `might_double_exchange`. This bit is set by the first call by
+        //     the other thread (which we know it has happend because of
+        //     `exchange`) and unset for any subsequent calls. Therefore, if
+        //     it's unset now, it'll be unset also after the following
+        //     Swap call (`DCHECK`-ed).
         if (((received & kExchangedMask) != 0) &&
             !std::exchange(called_might_double_exchange, true)) {
           std::forward<F>(might_double_exchange)(ref());
