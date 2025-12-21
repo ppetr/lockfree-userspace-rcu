@@ -56,14 +56,13 @@ class TwoThreadConcurrent {
   // determines which thread (left/right) is performing the operation.
   //
   // Returns a reference to the value just **before `diff` is applied**, and
-  // whether this update received a new version from the other thread.  If it's
-  // desired to obtain `C` after `diff` is applied, call another `Update` with
-  // a no-op operation, as in:
+  // whether this update received a new version from the other thread. This
+  // makes it easy to use this method for procedures such as "exchange" or
+  // "compare-and-swap". If it's desired to obtain `C` after `diff` is
+  // applied, call `ObserveLast()`.
   //
-  //    ttc.Update<false>(42);
-  //    const auto& value_after_update = ttc.Update<false>(0).first;
-  //
-  // The returned reference is valid only until another call to `Update`.
+  // The returned reference is only valid until another call to `Update` with
+  // the same `Right` parameter.
   template <bool Right>
   inline std::pair<const C&, bool> Update(D diff) {
     exchange_.template side<Right>().ref().Append(diff);
@@ -85,15 +84,15 @@ class TwoThreadConcurrent {
     return {next.ref.collected_, next.exchanged};
   }
 
-  // Just as `Update` above, but issues a `U::NoOp()` operation after `diff` to
-  // ensure `diff` is visible to the caller in the result.
+  // Propagates the last `D` operation to the `C&` returned by the last
+  // `Update` method (with the same `Right` parameter), thus ensuring this
+  // thread can also observe the effect of the last operation on `C`.
   //
-  // WARNING: When calling this method (by any thread) it's no longer
-  // meaningful to observe exchanges, because they can be just no-ops.
+  // Idempotent (until another call to `Update` with the same `Right`
+  // parameter).
   template <bool Right>
-  inline const C& UpdateSelfVisible(D diff) {
-    Update<Right>(std::move(diff));
-    return Update<Right>(U::NoOp()).first;
+  const C& ObserveLast() {
+    return exchange_.template side<Right>().ref().Append(U::NoOp());
   }
 
  private:
@@ -102,13 +101,16 @@ class TwoThreadConcurrent {
     explicit Slice(C initial)
         : collected_(std::move(initial)), last_{U::NoOp()} {}
 
-    inline void Append(D diff) {
+    inline C& Append(D diff) {
       U::Update(collected_, std::exchange(last_, std::move(diff)));
+      return collected_;
     }
 
     C collected_;
-    // Populated on first `Update` and holds a value ever since.
     D last_;
+    // When this `Slice` is the middle one passing between the two threads,
+    // this holds the most recent operation that can't be yet applied to
+    // `collected_`.
   };
 
   Local3StateExchange<Slice> exchange_;

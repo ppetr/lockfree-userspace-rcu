@@ -104,14 +104,28 @@ TEST(TwoThreadConcurrentTest, ChangeSeenImmediatelyString) {
 
 TEST(TwoThreadConcurrentTest, SelfVisibleChangesString) {
   TwoThreadConcurrent<std::string> ttc("");
-  EXPECT_THAT(ttc.UpdateSelfVisible<false>("a"), "a");
-  EXPECT_THAT(ttc.UpdateSelfVisible<true>("b"), "ab");
-  EXPECT_THAT(ttc.UpdateSelfVisible<true>("c"), "abc");
+  EXPECT_THAT(ttc.Update<false>("a"), Pair("", _));
+  EXPECT_EQ(ttc.ObserveLast<false>(), "a");
+  EXPECT_EQ(ttc.ObserveLast<false>(), "a");
+  EXPECT_THAT(ttc.Update<true>("b"), Pair("a", _));
+  EXPECT_EQ(ttc.ObserveLast<true>(), "ab");
+  EXPECT_EQ(ttc.ObserveLast<true>(), "ab");
+  EXPECT_THAT(ttc.Update<true>("c"), Pair("ab", _));
+  EXPECT_EQ(ttc.ObserveLast<true>(), "abc");
+  EXPECT_EQ(ttc.ObserveLast<true>(), "abc");
   // Another round.
-  EXPECT_THAT(ttc.UpdateSelfVisible<false>("x"), "abcx");
-  EXPECT_THAT(ttc.UpdateSelfVisible<false>(""), "abcx");
-  EXPECT_THAT(ttc.UpdateSelfVisible<true>("y"), "abcxy");
-  EXPECT_THAT(ttc.UpdateSelfVisible<true>(""), "abcxy");
+  EXPECT_THAT(ttc.Update<false>("x"), Pair("abc", _));
+  EXPECT_EQ(ttc.ObserveLast<false>(), "abcx");
+  EXPECT_EQ(ttc.ObserveLast<false>(), "abcx");
+  EXPECT_THAT(ttc.Update<false>(""), Pair("abcx", _));
+  EXPECT_EQ(ttc.ObserveLast<false>(), "abcx");
+  EXPECT_EQ(ttc.ObserveLast<false>(), "abcx");
+  EXPECT_THAT(ttc.Update<true>("y"), Pair("abcx", _));
+  EXPECT_EQ(ttc.ObserveLast<true>(), "abcxy");
+  EXPECT_EQ(ttc.ObserveLast<true>(), "abcxy");
+  EXPECT_THAT(ttc.Update<true>(""), Pair("abcxy", _));
+  EXPECT_EQ(ttc.ObserveLast<true>(), "abcxy");
+  EXPECT_EQ(ttc.ObserveLast<true>(), "abcxy");
 }
 
 TEST(TwoThreadConcurrentTest, ZigZag) {

@@ -56,13 +56,9 @@ class LocalLockFreeMetricUpdate {
 
  private:
   struct Metric {
-    template <
-        typename E,
-        typename std::enable_if_t<
-            std::is_same_v<absl::remove_cvref_t<E>, std::optional<D>>, int> = 0>
-    inline Metric& operator+=(E&& increment_) {
+    inline Metric& operator+=(std::optional<D> increment_) {
       if (increment_.has_value()) {
-        value += *std::forward<E>(increment_);
+        value += *std::move(increment_);
       } else {
         value = C{};
       }
