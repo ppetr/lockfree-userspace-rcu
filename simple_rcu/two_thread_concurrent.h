@@ -32,7 +32,7 @@ template <typename C, typename D = C>
 struct OperatorPlus {
   static constexpr inline D NoOp() { return D{}; }
 
-  static inline C& Update(C& target, D diff) {
+  static inline C& Apply(C& target, D diff) {
     return target += std::move(diff);
   }
 };
@@ -102,7 +102,7 @@ class TwoThreadConcurrent {
         : collected_(std::move(initial)), last_{U::NoOp()} {}
 
     inline C& Append(D diff) {
-      U::Update(collected_, std::exchange(last_, std::move(diff)));
+      U::Apply(collected_, std::exchange(last_, std::move(diff)));
       return collected_;
     }
 
