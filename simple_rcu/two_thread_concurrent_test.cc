@@ -196,13 +196,15 @@ TEST(TwoThreadConcurrentTest, TwoThreads) {
 TEST(TwoThreadConcurrentTest, NoDefaultConstructible) {
   struct Operation {};
   struct Foo {
-    explicit Foo(std::in_place_t) {}
+    static Foo NoOp() { return Foo(std::in_place); }
 
-    Foo& operator+=(const Operation&) { return *this; }
+    static void Apply(Foo&, Foo) {}
+
+    explicit Foo(std::in_place_t) {}
   };
 
-  TwoThreadConcurrent<Foo, Operation>(Foo(std::in_place))
-      .Update<false>(Operation());
+  TwoThreadConcurrent<Foo, Foo, Foo>(Foo(std::in_place))
+      .Update<false>(Foo(std::in_place));
 }
 
 // Wraps `C` to be acted upon by an arbitrary functor using
@@ -219,7 +221,7 @@ struct AnyFunctor {
 
   static constexpr inline diff_type NoOp() { return {}; }
 
-  static void Update(value_type& target, const diff_type& f) {
+  static void Apply(value_type& target, const diff_type& f) {
     if (f != nullptr) {
       f(target);
     }
