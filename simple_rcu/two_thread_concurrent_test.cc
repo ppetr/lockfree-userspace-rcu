@@ -65,13 +65,7 @@ struct BackCollection {
   BackCollection& operator=(BackCollection const&) = default;
   BackCollection& operator=(BackCollection&&) = default;
 
-  BackCollection& operator+=(const value_type& element) {
-    if (element.has_value()) {
-      collection.emplace_back(*element);
-    }
-    return *this;
-  }
-  BackCollection& operator+=(value_type&& element) {
+  BackCollection& operator+=(value_type element) {
     if (element.has_value()) {
       collection.push_back(*std::move(element));
     }
@@ -97,7 +91,7 @@ void AppendTo(std::deque<T>&& input, std::deque<T>& target) {
 }
 
 TEST(TwoThreadConcurrentTest, ChangeSeenImmediatelyString) {
-  TwoThreadConcurrent<std::string, absl::string_view> ttc("");
+  TwoThreadConcurrent<std::string> ttc("");
   EXPECT_THAT(ttc.Update<false>("a"), Pair("", _));
   EXPECT_THAT(ttc.Update<true>("b"), Pair("a", true));
   EXPECT_THAT(ttc.Update<true>("c"), Pair("ab", false));
@@ -206,24 +200,24 @@ TEST(TwoThreadConcurrentTest, NoDefaultConstructible) {
 // See test `ArbitraryFunctor` below.
 template <typename C>
 struct AnyFunctor {
+  using value_type = C;
   using diff_type = std::function<void(C&)>;
 
-  AnyFunctor& operator+=(diff_type f) {
-    if (f != nullptr) {
-      f(value);
-    }
-    return *this;
-  }
+  static constexpr inline diff_type NoOp() { return {}; }
 
-  C value;
+  static void Update(value_type& target, const diff_type& f) {
+    if (f != nullptr) {
+      f(target);
+    }
+  }
 };
 
 TEST(TwoThreadConcurrentTest, ArbitraryFunctor) {
   using StringF = AnyFunctor<std::string>;
-  TwoThreadConcurrent<StringF, StringF::diff_type> ttc;
+  TwoThreadConcurrent<std::string, StringF::diff_type, StringF> ttc;
   ttc.Update<false>([](std::string& s) { s.append("abc"); });
   ttc.Update<false>([](std::string& s) { s.insert(0, "xyz-"); });
-  EXPECT_EQ(ttc.Update<true>({}).first.value, "xyz-abc");
+  EXPECT_EQ(ttc.Update<true>({}).first, "xyz-abc");
 }
 
 }  // namespace
