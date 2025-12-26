@@ -17,6 +17,7 @@
 
 #include <array>
 #include <atomic>
+#include <new>  // std::hardware_destructive_interference_size
 #include <utility>
 
 #include "simple_rcu/lock_free_int.h"
@@ -32,11 +33,28 @@ class Local3StateExchange {
                 "Not lock-free on this architecture, please report this as a "
                 "bug on the project's GitHub page");
 
+#ifdef __cpp_lib_hardware_interference_size
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winterference-size"
+  constexpr static size_t kPadding =
+      std::hardware_destructive_interference_size;
+#pragma GCC diagnostic pop
+#else
+  constexpr static size_t kPadding = 64;
+#endif
+
   constexpr static Index kIndexMask = 3;
   constexpr static Index kRightMask = 4;
   constexpr static Index kExchangedMask = 8;
 
-  struct Context final {
+  struct alignas(kPadding) Slot final {
+    template <typename... Args>
+    explicit Slot(Args... args_) : value(std::forward<Args>(args_)...) {}
+
+    T value;
+  };
+
+  struct alignas(kPadding) Context final {
     // Stores just the first `kIndexMask` bits.
     Index index;
     // Stored with all bits, exactly what has been written to the atomic
@@ -48,8 +66,8 @@ class Local3StateExchange {
   template <bool Right>
   class Side final {
    public:
-    inline const T& ref() const { return main_.values_[context().index]; }
-    inline T& ref() { return main_.values_[context().index]; }
+    inline const T& ref() const { return main_.values_[context().index].value; }
+    inline T& ref() { return main_.values_[context().index].value; }
 
     struct PassResult {
       T& ref;
@@ -133,7 +151,7 @@ class Local3StateExchange {
       : passing_(1),
         context_{Context{.index = 0, .last = 1},
                  Context{.index = 2, .last = -1}},
-        values_{T(args...), T(args...), T(args...)} {}
+        values_{Slot(args...), Slot(args...), Slot(args...)} {}
 
   template <bool Right>
   Side<Right> side() {
@@ -145,9 +163,9 @@ class Local3StateExchange {
   }
 
  private:
-  std::atomic<Index> passing_;
+  alignas(kPadding) std::atomic<Index> passing_;
   std::array<Context, 2> context_;
-  std::array<T, 3> values_;
+  std::array<Slot, 3> values_;
 };
 
 }  // namespace simple_rcu
