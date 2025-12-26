@@ -68,8 +68,13 @@ class TwoThreadConcurrent {
     exchange_.template side<Right>().ref().Append(diff);
 
     std::optional<Slice> prev_copy(std::nullopt);
-    const auto next = exchange_.template side<Right>().Pass(
-        [&prev_copy](const Slice& ref) { prev_copy = ref; });
+    const auto next =
+        exchange_.template side<Right>().Pass([&prev_copy](auto&& ref) {
+          // When exchanging sides, we can optimize by moving the value of
+          // `ref`. And `Pass` signals this already by calling the callback
+          // with a && type.
+          prev_copy = std::forward<decltype(ref)>(ref);
+        });
     if (next.past_exchanged) {
       ABSL_CHECK(prev_copy.has_value());
       next.ref.collected_ = std::move(prev_copy)->collected_;

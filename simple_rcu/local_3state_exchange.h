@@ -83,6 +83,10 @@ class Local3StateExchange {
     // callback `might_double_exchange` is guaranteed to be called on the
     // `ref()` value just before its passed on. However, its call will be
     // avoided, if its possible to infer `!might_double_exchange`.
+    //
+    // If switching sides, the value passed to the callback is an r-value (&&),
+    // as in this case the current value will be obsolete compared to the new
+    // one, and the `TwoThreadConcurrent` algorithm can take advantage of this.
     template <typename F>
     inline PassResult Pass(F&& might_double_exchange) {
       Context& ctx = context();
@@ -114,7 +118,10 @@ class Local3StateExchange {
         //     Swap call (`DCHECK`-ed).
         if (((received & kExchangedMask) != 0) &&
             !std::exchange(called_might_double_exchange, true)) {
-          std::forward<F>(might_double_exchange)(ref());
+          // When exchanging sides, the value passed to the other side will lag
+          // compared to its last one. The callback can take advantage of this
+          // by moving the value out.
+          std::forward<F>(might_double_exchange)(std::move(ref()));
         }
         new_index |= kExchangedMask;
         received =
