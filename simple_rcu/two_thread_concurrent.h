@@ -19,12 +19,9 @@
 #include <type_traits>
 #include <utility>
 
-#include "absl/base/attributes.h"
-#include "absl/base/thread_annotations.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
 #include "simple_rcu/local_3state_exchange.h"
-#include "simple_rcu/thread_local.h"
 
 namespace simple_rcu {
 
