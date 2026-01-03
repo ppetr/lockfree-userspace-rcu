@@ -26,8 +26,8 @@
 #include "absl/base/thread_annotations.h"
 #include "absl/log/absl_check.h"
 #include "absl/log/absl_log.h"
+#include "simple_rcu/bi_di_channel.h"
 #include "simple_rcu/thread_local.h"
-#include "simple_rcu/two_thread_concurrent.h"
 
 namespace simple_rcu {
 
@@ -50,25 +50,10 @@ class LocalLockFreeMetricUpdate {
   static_assert(std::is_copy_constructible_v<D> && std::is_copy_assignable_v<D>,
                 "`D` must be a copyable type");
 
-  inline void Update(D value) {
-    exchange_.template Update<false>(std::move(value));
-  }
+  inline void Update(D value) { channel_.UpdateLeft(std::move(value)); }
 
  private:
-  struct Metric {
-    inline Metric& operator+=(std::optional<D> increment_) {
-      if (increment_.has_value()) {
-        value += *std::move(increment_);
-      } else {
-        value = C{};
-      }
-      return *this;
-    }
-
-    C value;
-  };
-
-  TwoThreadConcurrent<Metric, std::optional<D>> exchange_;
+  UniDiChannel<C, D> channel_;
 
   friend class LocalLockFreeMetric<C, D>;
 };
@@ -90,9 +75,7 @@ class LocalLockFreeMetric final : public LocalLockFreeMetricUpdate<C, D> {
   // thread) accumulated into `C{}` using `operator+=(C&, D)` since the last
   // call to `Collect`.
   ABSL_MUST_USE_RESULT C Collect() {
-    return LocalLockFreeMetricUpdate<C, D>::exchange_
-        .template Update<true>(std::nullopt)
-        .first.value;
+    return LocalLockFreeMetricUpdate<C, D>::channel_.UpdateRight();
   }
 };
 
